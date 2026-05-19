@@ -2,14 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { proxyStreamRequest } from '@/lib/api-proxy';
 import { getUserPoints, deductUserPoints } from '@/lib/db';
 import { MODEL_PRICING } from '@/lib/config';
+import { auth } from '@/auth';
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model, userId, stream = true } = await req.json();
-
-    if (!userId) {
-      return NextResponse.json({ error: '用户ID不能为空' }, { status: 400 });
+    const session = await auth();
+    
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: '未登录' }, { status: 401 });
     }
+    
+    const userId = session.user.id;
+    const { messages, model, stream = true } = await req.json();
 
     if (!model) {
       return NextResponse.json({ error: '模型不能为空' }, { status: 400 });
@@ -25,11 +29,11 @@ export async function POST(req: NextRequest) {
     // 简单估算：每个消息约100token
     const estimatedInputTokens = messages.reduce((acc: number, m: any) => acc + (m.content?.length || 0) / 4, 0);
     const estimatedOutputTokens = estimatedInputTokens * 0.5; // 假设输出是输入的一半
-    
-    const estimatedCost = 
-      (estimatedInputTokens / 1000) * pricing.input + 
+
+    const estimatedCost =
+      (estimatedInputTokens / 1000) * pricing.input +
       (estimatedOutputTokens / 1000) * pricing.output;
-    
+
     const estimatedPoints = Math.max(1, Math.ceil(estimatedCost));
 
     // 检查用户积分

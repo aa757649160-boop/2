@@ -1,20 +1,22 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { RECHARGE_TIERS, PAYMENT_QRCODE } from '@/lib/config';
+import { useSession } from 'next-auth/react';
 
 export default function ProfilePage() {
+  const { data: session } = useSession();
   const [userId, setUserId] = useState('');
   const [points, setPoints] = useState<number | null>(null);
   const [selectedTier, setSelectedTier] = useState<number | null>(null);
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
+  
   useEffect(() => {
-    const storedUserId = localStorage.getItem('userId');
-    if (storedUserId) {
-      setUserId(storedUserId);
+    if (session?.user?.id) {
+      const currentUserId = session.user.id;
+      setUserId(currentUserId);
       // 获取用户积分，实时从数据库拉取
-      fetch(`/api/balance?userId=${storedUserId}`)
+      fetch(`/api/balance`)
         .then(res => res.json())
         .then(data => {
           if (data.points !== undefined) {
@@ -22,7 +24,7 @@ export default function ProfilePage() {
           }
         });
     }
-  }, []);
+  }, [session]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -41,7 +43,6 @@ export default function ProfilePage() {
       alert('请选择充值档位并上传付款截图');
       return;
     }
-
     setLoading(true);
     try {
       const tier = RECHARGE_TIERS[selectedTier];
@@ -51,24 +52,21 @@ export default function ProfilePage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId,
           amount: tier.amount,
           points: tier.points,
           screenshot,
         }),
       });
       const data = await response.json();
-
       if (data.error) {
         alert(data.error);
         return;
       }
-
       alert('充值申请已提交，请等待管理员审核！');
       setSelectedTier(null);
       setScreenshot(null);
       // 刷新积分，实时同步
-      fetch(`/api/balance?userId=${userId}`)
+      fetch(`/api/balance`)
         .then(res => res.json())
         .then(data => {
           if (data.points !== undefined) {
@@ -89,7 +87,6 @@ export default function ProfilePage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">个人中心</h1>
           <p className="text-gray-500">查看您的账户信息和积分余额</p>
         </div>
-
         {/* 积分卡片 */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mb-8">
           <div className="flex items-center justify-between">
@@ -98,7 +95,7 @@ export default function ProfilePage() {
               <div className="flex items-center">
                 <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center mr-3">
                   <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M8.433 7.418c.155-.103.346-.228.589-.356C10.005 6.63 11.022 6.25 12 6.25c.978 0 1.995.38 2.978.812.243.128.434.253.589.356.555.367.85.944.85 1.582v.001c0 .638-.295 1.215-.85 1.582-.155.103-.346.228.589-.356C13.995 11.37 12.978 11.75 12 11.75c-.978 0-1.995-.38-2.978-.812a6.562 6.562 0 01-.589-.356C7.88 10.215 7.585 9.638 7.585 9c0-.638.295-1.215.848-1.582z" />
+                    <path d="M8.433 7.418c.155-.103.346-.228.589-.356C10.005 6.63 11.022 6.25 12 6.25c.978 0 1.995.38 2.978.812.243.128.434.253.589.356.555.367.85.944.85 1.582v.001c0 .638-.295 1.215-.85 1.582-.155.103-.346.228-.589.356C13.995 11.37 12.978 11.75 12 11.75c-.978 0-1.995-.38-2.978-.812a6.562 6.562 0 01-.589-.356C7.88 10.215 7.585 9.638 7.585 9c0-.638.295-1.215.848-1.582z" />
                   </svg>
                 </div>
                 <span className="text-4xl font-bold text-gray-900">{points ?? '-'}</span>
@@ -111,11 +108,9 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
-
         {/* 充值区域 */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
           <h2 className="text-xl font-bold text-gray-900 mb-6">积分充值</h2>
-
           {/* 充值档位 */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-3">选择充值档位</label>
@@ -136,7 +131,6 @@ export default function ProfilePage() {
               ))}
             </div>
           </div>
-
           {selectedTier !== null && (
             <div className="border-t border-gray-100 pt-6">
               <div className="grid md:grid-cols-2 gap-8">
@@ -156,7 +150,6 @@ export default function ProfilePage() {
                     </p>
                   </div>
                 </div>
-
                 {/* 上传截图 */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -199,7 +192,6 @@ export default function ProfilePage() {
                       </div>
                     )}
                   </div>
-
                   <button
                     onClick={handleSubmit}
                     disabled={loading || !screenshot}

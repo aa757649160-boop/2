@@ -1,27 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  MAIN_API_BASE_URL, 
+import {
+  MAIN_API_BASE_URL,
   BACKUP_API_BASE_URL,
   MODEL_PRICING,
   IMAGE_MODELS
 } from '@/lib/config';
 import { getUserPoints, updateUserPoints } from '@/lib/db';
+import { auth } from '@/auth';
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, model, prompt } = await req.json();
+    const session = await auth();
+    
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: '未登录' }, { status: 401 });
+    }
+    
+    const userId = session.user.id;
+    const { model, prompt } = await req.json();
 
-    if (!userId || !model || !prompt) {
+    if (!model || !prompt) {
       return NextResponse.json({ error: '参数错误' }, { status: 400 });
     }
 
     // 检查余额
     const balance = await getUserPoints(userId);
     const price = MODEL_PRICING[model]?.input || 0;
-    
+
     if (balance < price) {
-      return NextResponse.json({ 
-        error: `积分不足，需要 ${price} 积分，您当前有 ${balance.toFixed(2)} 积分` 
+      return NextResponse.json({
+        error: `积分不足，需要 ${price} 积分，您当前有 ${balance.toFixed(2)} 积分`
       }, { status: 400 });
     }
 
@@ -46,7 +54,7 @@ export async function POST(req: NextRequest) {
       // 主API失败，尝试备用API
       apiKey = process.env.BACKUP_API_KEY;
       baseUrl = BACKUP_API_BASE_URL;
-      
+
       response = await fetch(`${baseUrl}/videos/generations`, {
         method: 'POST',
         headers: {

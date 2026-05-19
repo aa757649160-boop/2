@@ -3,34 +3,40 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ADMIN_USER_ID } from '@/lib/config';
+import { useSession, signOut } from 'next-auth/react';
 
 export default function Navbar() {
-  const [userId, setUserId] = useState('');
+  const { data: session } = useSession();
   const [points, setPoints] = useState<number | null>(null);
   const pathname = usePathname();
 
+  const userId = session?.user?.id || '';
+  const isAdmin = userId === ADMIN_USER_ID;
+
   useEffect(() => {
-    const storedUserId = localStorage.getItem('userId');
-    if (storedUserId) {
-      setUserId(storedUserId);
+    if (userId) {
       // 获取用户积分，实时从数据库拉取，保证和个人中心同步
-      fetch(`/api/balance?userId=${storedUserId}`)
+      fetch(`/api/balance`)
         .then(res => res.json())
         .then(data => {
           if (data.points !== undefined) {
             setPoints(data.points);
           }
         });
+    } else {
+      setPoints(null);
     }
-  }, []);
-
-  const isAdmin = userId === ADMIN_USER_ID;
+  }, [userId]);
 
   const navItems = [
     { href: '/', label: '对话' },
     { href: '/image', label: '绘图' },
     { href: '/video', label: '视频生成' },
   ];
+
+  const handleSignOut = async () => {
+    await signOut({ redirect: '/login' });
+  };
 
   return (
     <nav className="bg-white border-b border-gray-100 sticky top-0 z-50">
@@ -62,42 +68,73 @@ export default function Navbar() {
           </div>
 
           <div className="flex items-center space-x-4">
-            {/* 积分显示 */}
-            {points !== null && (
-              <div className="flex items-center bg-yellow-50 px-4 py-2 rounded-lg">
-                <svg className="w-4 h-4 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M8.433 7.418c.155-.103.346-.228.589-.356C10.005 6.63 11.022 6.25 12 6.25c.978 0 1.995.38 2.978.812.243.128.434.253.589.356.555.367.85.944.85 1.582v.001c0 .638-.295 1.215-.85 1.582-.155.103-.346.228-.589.356C13.995 11.37 12.978 11.75 12 11.75c-.978 0-1.995-.38-2.978-.812a6.562 6.562 0 01-.589-.356C7.88 10.215 7.585 9.638 7.585 9c0-.638.295-1.215.848-1.582z" />
-                </svg>
-                <span className="text-sm font-semibold text-yellow-700">{points.toFixed(2)} 积分</span>
-              </div>
-            )}
+            {session ? (
+              <>
+                {/* 积分显示 */}
+                {points !== null && (
+                  <div className="flex items-center bg-yellow-50 px-4 py-2 rounded-lg">
+                    <svg className="w-4 h-4 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M8.433 7.418c.155-.103.346-.228.589-.356C10.005 6.63 11.022 6.25 12 6.25c.978 0 1.995.38 2.978.812.243.128.434.253.589.356.555.367.85.944.85 1.582v.001c0 .638-.295 1.215-.85 1.582-.155.103-.346.228-.589.356C13.995 11.37 12.978 11.75 12 11.75c-.978 0-1.995-.38-2.978-.812a6.562 6.562 0 01-.589-.356C7.88 10.215 7.585 9.638 7.585 9c0-.638.295-1.215.848-1.582z" />
+                    </svg>
+                    <span className="text-sm font-semibold text-yellow-700">{points.toFixed(2)} 积分</span>
+                  </div>
+                )}
 
-            {/* 个人中心 */}
-            <Link
-              href="/profile"
-              className={`p-2 rounded-lg transition-colors ${
-                pathname === '/profile'
-                  ? 'bg-gray-100'
-                  : 'hover:bg-gray-50'
-              }`}
-            >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-            </Link>
+                {/* 用户名显示 */}
+                <span className="text-sm text-gray-700">{session.user?.name}</span>
 
-            {/* 管理后台 */}
-            {isAdmin && (
-              <Link
-                href="/admin"
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  pathname === '/admin'
-                    ? 'bg-gray-900 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                管理后台
-              </Link>
+                {/* 个人中心 */}
+                <Link
+                  href="/profile"
+                  className={`p-2 rounded-lg transition-colors ${
+                    pathname === '/profile'
+                      ? 'bg-gray-100'
+                      : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </Link>
+
+                {/* 管理后台 */}
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      pathname === '/admin'
+                        ? 'bg-gray-900 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    管理后台
+                  </Link>
+                )}
+
+                {/* 退出登录 */}
+                <button
+                  onClick={handleSignOut}
+                  className="text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 px-3 py-2 rounded-lg transition-colors"
+                >
+                  退出
+                </button>
+              </>
+            ) : (
+              <>
+                {/* 未登录，显示登录和注册按钮 */}
+                <Link
+                  href="/login"
+                  className="text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 px-3 py-2 rounded-lg transition-colors"
+                >
+                  登录
+                </Link>
+                <Link
+                  href="/register"
+                  className="bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-yellow-600 transition-colors"
+                >
+                  注册
+                </Link>
+              </>
             )}
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { sql } from '@vercel/postgres';
+import crypto from 'crypto';
 
 // 用户积分操作
 export async function getUserPoints(userId: string): Promise<number> {
@@ -51,6 +52,34 @@ export async function deductUserPoints(userId: string, points: number): Promise<
   return true;
 }
 
+// 用户认证相关
+export async function getUserByUsername(username: string) {
+  await initTables();
+  
+  const result = await sql`
+    SELECT * FROM users WHERE username = ${username}
+  `;
+  
+  return result.rows[0] || null;
+}
+
+export async function createUser(username: string, passwordHash: string) {
+  await initTables();
+  
+  // 生成唯一的用户ID
+  const userId = crypto.randomUUID();
+  
+  await sql`
+    INSERT INTO users (user_id, username, password_hash, points, created_at, updated_at)
+    VALUES (${userId}, ${username}, ${passwordHash}, 100, NOW(), NOW())
+  `;
+  
+  return {
+    id: userId,
+    username: username,
+  };
+}
+
 // 充值记录操作
 export type RechargeRequest = {
   id: number;
@@ -62,7 +91,6 @@ export type RechargeRequest = {
   created_at: string;
   updated_at: string;
 };
-
 export async function createRechargeRequest(request: {
   userId: string;
   amount: number;
@@ -79,7 +107,6 @@ export async function createRechargeRequest(request: {
   
   return result.rows[0];
 }
-
 export async function getPendingRecharges(): Promise<RechargeRequest[]> {
   await initTables();
   
@@ -91,7 +118,6 @@ export async function getPendingRecharges(): Promise<RechargeRequest[]> {
   
   return result.rows as RechargeRequest[];
 }
-
 export async function getAllRecharges(): Promise<RechargeRequest[]> {
   await initTables();
   
@@ -102,7 +128,6 @@ export async function getAllRecharges(): Promise<RechargeRequest[]> {
   
   return result.rows as RechargeRequest[];
 }
-
 export async function approveRecharge(id: number) {
   await initTables();
   
@@ -132,7 +157,6 @@ export async function approveRecharge(id: number) {
   
   return recharge;
 }
-
 export async function rejectRecharge(id: number) {
   await initTables();
   
@@ -160,10 +184,12 @@ export async function rejectRecharge(id: number) {
 
 // 初始化数据库表
 async function initTables() {
-  // 创建 users 表，points 改为 NUMERIC 支持小数，兼容绘图的0.06积分扣减
+  // 创建 users 表，新增username和password_hash字段用于认证
   await sql`
     CREATE TABLE IF NOT EXISTS users (
       user_id VARCHAR(255) PRIMARY KEY,
+      username VARCHAR(255) UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
       points NUMERIC NOT NULL DEFAULT 100,
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
