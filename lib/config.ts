@@ -27,12 +27,12 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
 'gpt-image-2-2k': { input: 0.08, output: 0 },
 'gpt-image-2-4k': { input: 0.12, output: 0 },
 // gpt-image-2 稳定接口定价：提示0.03/K tokens，补全0.15/K tokens
-'gpt-image-2-stable-1k': { input: 0.03, output: 0.15 },
-'gpt-image-2-stable-2k': { input: 0.03, output: 0.15 },
-'gpt-image-2-stable-4k': { input: 0.03, output: 0.15 },
-'nano-banana-2-1k': { input: 0.28, output: 0 },
-'nano-banana-2-2k': { input: 0.3, output: 0 },
-'nano-banana-2-4k': { input: 0.35, output: 0 },
+'gpt-image-2-stable-1k': { input: 0.2, output: 0 },
+'gpt-image-2-stable-2k': { input: 0.4, output: 0 },
+'gpt-image-2-stable-4k': { input: 0.5, output: 0 },
+'nano-banana-2-1k': { input: 0.16, output: 0 },
+'nano-banana-2-2k': { input: 0.2, output: 0 },
+'nano-banana-2-4k': { input: 0.25, output: 0 },
 // nano-banana-2 稳定接口定价：价格与普通接口一致
 'nano-banana-2-stable-1k': { input: 0.28, output: 0 },
 'nano-banana-2-stable-2k': { input: 0.3, output: 0 },
@@ -56,7 +56,7 @@ models: ['1k', '2k', '4k'],
 },
 'gpt-image-2-stable': {
 models: ['1k', '2k', '4k'],
-note: '稳定接口：提示¥0.03/K tokens，补全¥0.15/K tokens。单张参考图2k生图约0.08积分，多张参考图token消耗增大',
+note: '稳定接口：提示稳定分组消耗巨大可用正常分组出土后用稳定分组放大,每多一张参考图积分多0.02',
 },
 'nano-banana-2': {
 models: ['1k', '2k', '4k'],
@@ -64,7 +64,7 @@ note: 'nano-banana2',
 },
 'nano-banana-2-stable': {
 models: ['1k', '2k', '4k'],
-note: '稳定接口：使用稳定优质令牌，价格与普通接口一致',
+note: '稳定接口：使用稳定优质接口全力维护',
 },
 };
 // 视频模型
