@@ -934,8 +934,8 @@ export default function HomePage() {
     <>
       <Navbar activeTab={activeTab} onTabChange={setActiveTab} />
       
-      {/* 绘图页面 */}
-      {activeTab === 'image' && (
+      {/* 绘图页面 - 使用CSS控制显示，组件始终挂载 */}
+      <div style={{ display: activeTab === 'image' ? 'block' : 'none' }}>
         <div className="min-h-screen bg-white" style={{ backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
           <div className="max-w-6xl mx-auto px-4 py-8">
             <div className="text-center mb-8">
@@ -1245,10 +1245,10 @@ export default function HomePage() {
             )}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* 视频页面 */}
-      {activeTab === 'video' && (
+      {/* 视频页面 - 使用CSS控制显示，组件始终挂载 */}
+      <div style={{ display: activeTab === 'video' ? 'block' : 'none' }}>
         <div className="min-h-screen bg-white" style={{ backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
           <div className="max-w-6xl mx-auto px-4 py-8">
             <div className="text-center mb-8">
@@ -1627,10 +1627,10 @@ export default function HomePage() {
             )}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* 个人中心页面 */}
-      {activeTab === 'profile' && (
+      {/* 个人中心页面 - 使用CSS控制显示，组件始终挂载 */}
+      <div style={{ display: activeTab === 'profile' ? 'block' : 'none' }}>
         <div className="min-h-screen bg-white" style={{ backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
           <div className="max-w-4xl mx-auto px-4 py-8">
             <div className="text-center mb-8">
@@ -1794,7 +1794,7 @@ export default function HomePage() {
             </div>
           </div>
         </div>
-      )}
+      </div>
     </>
   );
 }
