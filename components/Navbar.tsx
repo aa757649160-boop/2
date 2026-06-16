@@ -1,11 +1,16 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
 
-export default function Navbar() {
+type TabType = 'image' | 'video' | 'profile';
+
+interface NavbarProps {
+  activeTab: TabType;
+  onTabChange: (tab: TabType) => void;
+}
+
+export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
   const [userId, setUserId] = useState('');
   const [points, setPoints] = useState(0);
-  const pathname = usePathname();
 
   useEffect(() => {
     const id = localStorage.getItem('userId');
@@ -24,7 +29,7 @@ export default function Navbar() {
           // 出错了也不报错，保持默认的0
         });
     }
-  }, [pathname]);
+  }, [activeTab]);
 
   const handleLogout = () => {
     localStorage.removeItem('userId');
@@ -36,19 +41,27 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
-            <a href="/" className="flex items-center">
+            <div className="flex items-center cursor-pointer" onClick={() => onTabChange('image')}>
               <div className="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center mr-2">
                 <span className="text-white font-bold">A</span>
               </div>
               <span className="text-xl font-bold text-gray-900">AI Studio</span>
-            </a>
+            </div>
             <div className="ml-10 flex items-center space-x-4">
-              <a href="/" className="text-gray-600 hover:text-gray-900 text-sm">对话</a>
-              <a href="/image" className="text-gray-600 hover:text-gray-900 text-sm">绘图</a>
-              <a href="/video" className="text-gray-600 hover:text-gray-900 text-sm">视频生成</a>
+              <button 
+                onClick={() => onTabChange('image')}
+                className={`text-sm transition-colors ${activeTab === 'image' ? 'text-yellow-600 font-medium' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                绘图
+              </button>
+              <button 
+                onClick={() => onTabChange('video')}
+                className={`text-sm transition-colors ${activeTab === 'video' ? 'text-yellow-600 font-medium' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                视频生成
+              </button>
             </div>
           </div>
-
           <div className="flex items-center space-x-4">
             {userId ? (
               <>
@@ -58,9 +71,12 @@ export default function Navbar() {
                     {points?.toFixed?.(2) || 0}
                   </span>
                 </div>
-                <a href="/profile" className="text-gray-600 hover:text-gray-900 text-sm">
+                <button 
+                  onClick={() => onTabChange('profile')}
+                  className={`text-sm transition-colors ${activeTab === 'profile' ? 'text-yellow-600 font-medium' : 'text-gray-600 hover:text-gray-900'}`}
+                >
                   个人中心
-                </a>
+                </button>
                 <button
                   onClick={handleLogout}
                   className="text-gray-600 hover:text-gray-900 text-sm"
