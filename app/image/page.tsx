@@ -581,7 +581,9 @@ onChange={(e) => setProvider(e.target.value)}
 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
 >
 {Object.keys(IMAGE_MODELS).map(p => (
-<option key={p} value={p}>{p}</option>
+<option key={p} value={p}>
+  {p === 'gpt-image-2-stable' ? 'gpt-image-2（稳定接口）' : p === 'nano-banana-2-stable' ? 'nano-banana-2（稳定接口）' : p}
+</option>
 ))}
 </select>
 </div>
@@ -597,6 +599,12 @@ className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ou
 ))}
 </select>
 </div>
+{/* 模型说明提示 */}
+{IMAGE_MODELS[provider]?.note && (
+  <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+    <p className="text-xs text-blue-700">{IMAGE_MODELS[provider].note}</p>
+  </div>
+)}
 <div>
 <label className="block text-xs font-medium text-gray-500 mb-2">绘图比例</label>
 <select

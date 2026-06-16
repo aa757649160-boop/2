@@ -26,9 +26,17 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
 'gpt-image-2-1k': { input: 0.06, output: 0 },
 'gpt-image-2-2k': { input: 0.08, output: 0 },
 'gpt-image-2-4k': { input: 0.12, output: 0 },
+// gpt-image-2 稳定接口定价：提示0.03/K tokens，补全0.15/K tokens
+'gpt-image-2-stable-1k': { input: 0.03, output: 0.15 },
+'gpt-image-2-stable-2k': { input: 0.03, output: 0.15 },
+'gpt-image-2-stable-4k': { input: 0.03, output: 0.15 },
 'nano-banana-2-1k': { input: 0.28, output: 0 },
 'nano-banana-2-2k': { input: 0.3, output: 0 },
 'nano-banana-2-4k': { input: 0.35, output: 0 },
+// nano-banana-2 稳定接口定价：价格与普通接口一致
+'nano-banana-2-stable-1k': { input: 0.28, output: 0 },
+'nano-banana-2-stable-2k': { input: 0.3, output: 0 },
+'nano-banana-2-stable-4k': { input: 0.35, output: 0 },
 // 视频生成模型
 'veo3.1': { input: 1.8, output: 0 }, // Google veo3.1模型
 'doubao-seedance-2-0-260128': { input: 7.5, output: 0 }, // 1.5积分/秒 * 默认5秒
@@ -46,9 +54,17 @@ note?: string;
 'gpt-image-2': {
 models: ['1k', '2k', '4k'],
 },
+'gpt-image-2-stable': {
+models: ['1k', '2k', '4k'],
+note: '稳定接口：提示¥0.03/K tokens，补全¥0.15/K tokens。单张参考图2k生图约0.08积分，多张参考图token消耗增大',
+},
 'nano-banana-2': {
 models: ['1k', '2k', '4k'],
 note: 'nano-banana2',
+},
+'nano-banana-2-stable': {
+models: ['1k', '2k', '4k'],
+note: '稳定接口：使用稳定优质令牌，价格与普通接口一致',
 },
 };
 // 视频模型
@@ -66,6 +82,11 @@ apiKey: process.env.MAIN_API_KEY || '',
 export const BACKUP_API = {
 baseUrl: BACKUP_API_BASE_URL,
 apiKey: process.env.BACKUP_API_KEY || '',
+};
+// 稳定接口API配置
+export const STABLE_API = {
+baseUrl: MAIN_API_BASE_URL,
+apiKey: process.env.STABLE_API_KEY || '',
 };
 // 兼容旧页面的导出别名
 export const RECHARGE_TIERS = RECHARGE_OPTIONS;

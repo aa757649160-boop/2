@@ -93,3 +93,29 @@ export async function proxyStreamRequest(
     return response;
   }
 }
+
+/**
+ * 使用指定API密钥发起请求（用于稳定接口）
+ * @param endpoint API端点
+ * @param body 请求体
+ * @param customApiKey 自定义API密钥，如果不传则使用主API密钥
+ * @param method 请求方法
+ */
+export async function proxyApiRequestWithKey(
+  endpoint: string,
+  body: any,
+  customApiKey?: string,
+  method: 'POST' | 'GET' = 'POST'
+) {
+  // 如果提供了自定义API密钥，使用它；否则使用主备切换逻辑
+  if (customApiKey) {
+    const apiConfig: ApiConfig = {
+      baseUrl: MAIN_API.baseUrl,
+      apiKey: customApiKey,
+    };
+    return await tryApiRequest(apiConfig, endpoint, body, method);
+  }
+  
+  // 没有自定义密钥，走正常的主备切换逻辑
+  return await proxyApiRequest(endpoint, body, method);
+}
