@@ -320,8 +320,9 @@ useEffect(() => {
       window.location.hash = '#uxpHost-not-found';
     }
   } catch (e) {
-    console.log('[PluginUpload] 检测UXP环境出错:', e);
-    window.location.hash = '#uxpHost-error:' + encodeURIComponent(e.message);
+    const err = e as Error;
+    console.log('[PluginUpload] 检测UXP环境出错:', err);
+    window.location.hash = '#uxpHost-error:' + encodeURIComponent(err.message || 'unknown error');
   }
   
   return () => {
