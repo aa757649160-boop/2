@@ -250,6 +250,9 @@ const handlePluginImageUpload = async (url: string, width: number, height: numbe
 useEffect(() => {
   const handleMessage = (event: MessageEvent) => {
     console.log('[PluginUpload] 收到消息:', event);
+    console.log('[PluginUpload] event.origin:', event.origin);
+    console.log('[PluginUpload] event.data:', event.data);
+    console.log('[PluginUpload] typeof event.data:', typeof event.data);
     
     let data = event.data;
     
@@ -257,6 +260,7 @@ useEffect(() => {
     if (typeof data === 'string') {
       try {
         data = JSON.parse(data);
+        console.log('[PluginUpload] 字符串解析为JSON成功');
       } catch (e) {
         console.log('[PluginUpload] 消息不是JSON，忽略');
         return;
@@ -264,14 +268,33 @@ useEffect(() => {
     }
     
     if (data && data.type === 'uploadReferenceImage') {
+      console.log('[PluginUpload] 收到上传请求');
+      
+      // 发送确认回复给插件
+      try {
+        if (window.uxpHost && typeof window.uxpHost.postMessage === 'function') {
+          window.uxpHost.postMessage({
+            type: 'uploadAck',
+            received: true,
+            mode: data.url ? 'url' : 'base64',
+            timestamp: Date.now()
+          });
+          console.log('[PluginUpload] 已发送确认回复');
+        }
+      } catch (e) {
+        console.warn('[PluginUpload] 发送确认回复失败:', e);
+      }
+      
       // 支持两种模式：URL模式（推荐）和 base64 模式（兼容）
       if (data.url) {
-        console.log('[PluginUpload] 收到URL模式上传');
+        console.log('[PluginUpload] 收到URL模式上传:', data.url);
         handlePluginImageUpload(data.url, data.width || 1024, data.height || 1024, data.fileName || 'layer.png');
       } else if (data.base64) {
-        console.log('[PluginUpload] 收到base64模式上传');
+        console.log('[PluginUpload] 收到base64模式上传，长度:', data.base64.length);
         // base64 模式需要自己上传
         handlePluginImageUploadBase64(data.base64, data.fileName || 'layer.png');
+      } else {
+        console.warn('[PluginUpload] 消息中没有url或base64字段');
       }
     }
   };
