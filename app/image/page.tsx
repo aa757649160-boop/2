@@ -88,6 +88,7 @@ const [history, setHistory] = useState<Array<{time: number, images: string[], pr
 const [tasks, setTasks] = useState<Task[]>(initialTaskState.tasks);
 const [activeTaskId, setActiveTaskId] = useState<number | null>(initialTaskState.activeTaskId);
 const [nextTaskId, setNextTaskId] = useState<number>(initialTaskState.nextTaskId);
+const [uxpStatus, setUxpStatus] = useState<string>('检测中...');
 // 组件挂载状态，用于避免卸载后更新state的警告
 const mountedRef = useRef(true);
 
@@ -303,33 +304,40 @@ useEffect(() => {
   window.addEventListener('message', handleMessage);
   console.log('[PluginUpload] 消息监听器已添加');
   
-  // 检测是否在 UXP 环境中，如果是，发送一个测试消息
-  try {
-    const uxpHost = (window as any).uxpHost;
-    if (uxpHost && typeof uxpHost.postMessage === 'function') {
-      console.log('[PluginUpload] 检测到UXP环境，发送就绪消息');
-      uxpHost.postMessage({
-        type: 'pageReady',
-        page: 'image',
-        timestamp: Date.now()
-      });
-      // 同时通过hash标记一下（测试用）
-      window.location.hash = '#uxpHost-exists';
-    } else {
-      console.log('[PluginUpload] uxpHost不存在或postMessage不可用');
-      window.location.hash = '#uxpHost-not-found';
-    }
-  } catch (e) {
-    const err = e as Error;
-    console.log('[PluginUpload] 检测UXP环境出错:', err);
-    window.location.hash = '#uxpHost-error:' + encodeURIComponent(err.message || 'unknown error');
-  }
-  
   return () => {
     window.removeEventListener('message', handleMessage);
     console.log('[PluginUpload] 消息监听器已移除');
   };
 }, []); // 空依赖，只添加一次
+
+// 检测 UXP 环境
+useEffect(() => {
+  try {
+    const uxpHost = (window as any).uxpHost;
+    if (uxpHost && typeof uxpHost.postMessage === 'function') {
+      console.log('[PluginUpload] 检测到UXP环境，发送就绪消息');
+      setUxpStatus('uxpHost存在 ✓');
+      try {
+        uxpHost.postMessage({
+          type: 'pageReady',
+          page: 'image',
+          timestamp: Date.now()
+        });
+        setUxpStatus('uxpHost存在，已发送pageReady ✓');
+      } catch (sendErr) {
+        const err = sendErr as Error;
+        setUxpStatus('uxpHost存在但发送失败: ' + err.message);
+      }
+    } else {
+      console.log('[PluginUpload] uxpHost不存在或postMessage不可用');
+      setUxpStatus('uxpHost不存在 ✗');
+    }
+  } catch (e) {
+    const err = e as Error;
+    console.log('[PluginUpload] 检测UXP环境出错:', err);
+    setUxpStatus('检测出错: ' + err.message);
+  }
+}, []);
 
 // base64 模式上传（兼容旧版本插件）
 const handlePluginImageUploadBase64 = async (base64: string, fileName: string = "layer.png") => {
@@ -731,6 +739,9 @@ return (
 <div className="text-center mb-8">
 <h1 className="text-3xl font-bold text-gray-900 mb-2">AI 绘图</h1>
 <p className="text-gray-500">输入提示词，生成精美的图片</p>
+<div className="mt-4 text-xs text-gray-400 bg-gray-50 rounded-lg py-2 px-3 inline-block">
+插件状态: {uxpStatus}
+</div>
 </div>
 <div className="flex flex-col md:flex-row gap-6">
 {/* 左侧：绘图设置 */}
