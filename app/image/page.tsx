@@ -88,7 +88,6 @@ const [history, setHistory] = useState<Array<{time: number, images: string[], pr
 const [tasks, setTasks] = useState<Task[]>(initialTaskState.tasks);
 const [activeTaskId, setActiveTaskId] = useState<number | null>(initialTaskState.activeTaskId);
 const [nextTaskId, setNextTaskId] = useState<number>(initialTaskState.nextTaskId);
-const [uxpStatus, setUxpStatus] = useState<string>('检测中...');
 // 组件挂载状态，用于避免卸载后更新state的警告
 const mountedRef = useRef(true);
 
@@ -214,174 +213,6 @@ const handleRemoveReference = (index: number) => {
   }
   setReferenceImages(prev => prev.filter((_, i) => i !== index));
 };
-
-// 处理来自PS插件的图片上传（接收URL方式，插件端已上传完成）
-const handlePluginImageUpload = async (url: string, width: number, height: number, fileName: string = "layer.png") => {
-  try {
-    console.log('[PluginUpload] 收到插件上传的图片:', { url, width, height, fileName });
-    
-    // 创建一个虚拟的 File 对象（用于兼容现有逻辑）
-    // 实际上我们不需要 file，因为已经有 URL 了
-    const dummyFile = new File([], fileName, { type: 'image/png' });
-    
-    // 直接添加到参考图列表（使用函数式更新，避免闭包问题）
-    setReferenceImages(prev => {
-      if (prev.length >= 5) {
-        alert('最多只能上传5张参考图');
-        return prev;
-      }
-      return [...prev, {
-        file: dummyFile,
-        preview: url, // 直接用 URL 作为预览
-        url: url,
-        width: width,
-        height: height,
-      }];
-    });
-    
-    console.log('[PluginUpload] 图片已添加到参考图列表');
-  } catch (error: any) {
-    console.error('[PluginUpload] 插件上传处理失败:', error);
-    alert(`插件上传失败: ${error.message}`);
-  }
-};
-
-// 监听来自PS插件的postMessage消息
-// 使用 ref 存储最新的处理函数，避免闭包问题
-useEffect(() => {
-  const handleMessage = (event: MessageEvent) => {
-    console.log('[PluginUpload] 收到消息:', event);
-    console.log('[PluginUpload] event.origin:', event.origin);
-    console.log('[PluginUpload] event.data:', event.data);
-    console.log('[PluginUpload] typeof event.data:', typeof event.data);
-    
-    let data = event.data;
-    
-    // 如果 data 是字符串，尝试解析为 JSON
-    if (typeof data === 'string') {
-      try {
-        data = JSON.parse(data);
-        console.log('[PluginUpload] 字符串解析为JSON成功');
-      } catch (e) {
-        console.log('[PluginUpload] 消息不是JSON，忽略');
-        return;
-      }
-    }
-    
-    if (data && data.type === 'uploadReferenceImage') {
-      console.log('[PluginUpload] 收到上传请求');
-      
-      // 发送确认回复给插件
-      try {
-        const uxpHost = (window as any).uxpHost;
-        if (uxpHost && typeof uxpHost.postMessage === 'function') {
-          uxpHost.postMessage({
-            type: 'uploadAck',
-            received: true,
-            mode: data.url ? 'url' : 'base64',
-            timestamp: Date.now()
-          });
-          console.log('[PluginUpload] 已发送确认回复');
-        }
-      } catch (e) {
-        console.warn('[PluginUpload] 发送确认回复失败:', e);
-      }
-      
-      // 支持两种模式：URL模式（推荐）和 base64 模式（兼容）
-      if (data.url) {
-        console.log('[PluginUpload] 收到URL模式上传:', data.url);
-        handlePluginImageUpload(data.url, data.width || 1024, data.height || 1024, data.fileName || 'layer.png');
-      } else if (data.base64) {
-        console.log('[PluginUpload] 收到base64模式上传，长度:', data.base64.length);
-        // base64 模式需要自己上传
-        handlePluginImageUploadBase64(data.base64, data.fileName || 'layer.png');
-      } else {
-        console.warn('[PluginUpload] 消息中没有url或base64字段');
-      }
-    }
-  };
-  
-  window.addEventListener('message', handleMessage);
-  console.log('[PluginUpload] 消息监听器已添加');
-  
-  return () => {
-    window.removeEventListener('message', handleMessage);
-    console.log('[PluginUpload] 消息监听器已移除');
-  };
-}, []); // 空依赖，只添加一次
-
-// 检测 UXP 环境 + Hash 通信测试
-useEffect(() => {
-  // 测试：如果 hash 变化，就改背景颜色
-  const handleHashChange = () => {
-    const hash = window.location.hash;
-    console.log('[HashTest] hash 变化:', hash);
-    if (hash.includes('plugin-test')) {
-      document.body.style.backgroundColor = '#ff0000';
-      document.title = '收到插件消息！';
-    }
-  };
-  
-  window.addEventListener('hashchange', handleHashChange);
-  
-  // 初始检查
-  if (window.location.hash.includes('plugin-test')) {
-    document.body.style.backgroundColor = '#ff0000';
-    document.title = '收到插件消息！';
-  }
-  
-  return () => {
-    window.removeEventListener('hashchange', handleHashChange);
-  };
-}, []);
-
-// base64 模式上传（兼容旧版本插件）
-const handlePluginImageUploadBase64 = async (base64: string, fileName: string = "layer.png") => {
-  setUploading(true);
-  try {
-    // base64转Blob再转File
-    const byteCharacters = atob(base64);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: 'image/png' });
-    const file = new File([blob], fileName, { type: 'image/png' });
-    
-    // 创建预览
-    const preview = URL.createObjectURL(file);
-    const img = new Image();
-    img.src = preview;
-    await new Promise(resolve => img.onload = resolve);
-    const width = img.naturalWidth;
-    const height = img.naturalHeight;
-    
-    // 上传到图床
-    const url = await uploadToScdn(file);
-    
-    // 添加到参考图列表（使用函数式更新，避免闭包问题）
-    setReferenceImages(prev => {
-      if (prev.length >= 5) {
-        alert('最多只能上传5张参考图');
-        return prev;
-      }
-      return [...prev, {
-        file,
-        preview,
-        url,
-        width,
-        height,
-      }];
-    });
-  } catch (error: any) {
-    console.error('[PluginUpload] base64模式上传失败:', error);
-    alert(`插件上传失败: ${error.message}`);
-  } finally {
-    setUploading(false);
-  }
-};
-
 useEffect(() => {
 const storedUserId = localStorage.getItem('userId');
 if (storedUserId) {
@@ -735,9 +566,6 @@ return (
 <div className="text-center mb-8">
 <h1 className="text-3xl font-bold text-gray-900 mb-2">AI 绘图</h1>
 <p className="text-gray-500">输入提示词，生成精美的图片</p>
-<div className="mt-4 text-xs text-gray-400 bg-gray-50 rounded-lg py-2 px-3 inline-block">
-插件状态: {uxpStatus}
-</div>
 </div>
 <div className="flex flex-col md:flex-row gap-6">
 {/* 左侧：绘图设置 */}
