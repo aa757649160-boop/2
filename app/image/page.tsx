@@ -303,6 +303,21 @@ useEffect(() => {
   window.addEventListener('message', handleMessage);
   console.log('[PluginUpload] 消息监听器已添加');
   
+  // 检测是否在 UXP 环境中，如果是，发送一个测试消息
+  try {
+    const uxpHost = (window as any).uxpHost;
+    if (uxpHost && typeof uxpHost.postMessage === 'function') {
+      console.log('[PluginUpload] 检测到UXP环境，发送就绪消息');
+      uxpHost.postMessage({
+        type: 'pageReady',
+        page: 'image',
+        timestamp: Date.now()
+      });
+    }
+  } catch (e) {
+    console.log('[PluginUpload] 不在UXP环境中');
+  }
+  
   return () => {
     window.removeEventListener('message', handleMessage);
     console.log('[PluginUpload] 消息监听器已移除');
