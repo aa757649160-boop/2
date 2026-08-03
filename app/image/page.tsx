@@ -313,9 +313,15 @@ useEffect(() => {
         page: 'image',
         timestamp: Date.now()
       });
+      // 同时通过hash标记一下（测试用）
+      window.location.hash = '#uxpHost-exists';
+    } else {
+      console.log('[PluginUpload] uxpHost不存在或postMessage不可用');
+      window.location.hash = '#uxpHost-not-found';
     }
   } catch (e) {
-    console.log('[PluginUpload] 不在UXP环境中');
+    console.log('[PluginUpload] 检测UXP环境出错:', e);
+    window.location.hash = '#uxpHost-error:' + encodeURIComponent(e.message);
   }
   
   return () => {
