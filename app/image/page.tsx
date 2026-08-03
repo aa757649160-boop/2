@@ -272,8 +272,9 @@ useEffect(() => {
       
       // 发送确认回复给插件
       try {
-        if (window.uxpHost && typeof window.uxpHost.postMessage === 'function') {
-          window.uxpHost.postMessage({
+        const uxpHost = (window as any).uxpHost;
+        if (uxpHost && typeof uxpHost.postMessage === 'function') {
+          uxpHost.postMessage({
             type: 'uploadAck',
             received: true,
             mode: data.url ? 'url' : 'base64',
