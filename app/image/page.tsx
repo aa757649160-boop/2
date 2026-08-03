@@ -214,13 +214,79 @@ const handleRemoveReference = (index: number) => {
   setReferenceImages(prev => prev.filter((_, i) => i !== index));
 };
 
-// 处理来自PS插件的图片上传（base64方式）
-const handlePluginImageUpload = async (base64: string, fileName: string = "layer.png") => {
-  if (referenceImages.length >= 5) {
-    alert('最多只能上传5张参考图');
-    return;
+// 处理来自PS插件的图片上传（接收URL方式，插件端已上传完成）
+const handlePluginImageUpload = async (url: string, width: number, height: number, fileName: string = "layer.png") => {
+  try {
+    console.log('[PluginUpload] 收到插件上传的图片:', { url, width, height, fileName });
+    
+    // 创建一个虚拟的 File 对象（用于兼容现有逻辑）
+    // 实际上我们不需要 file，因为已经有 URL 了
+    const dummyFile = new File([], fileName, { type: 'image/png' });
+    
+    // 直接添加到参考图列表（使用函数式更新，避免闭包问题）
+    setReferenceImages(prev => {
+      if (prev.length >= 5) {
+        alert('最多只能上传5张参考图');
+        return prev;
+      }
+      return [...prev, {
+        file: dummyFile,
+        preview: url, // 直接用 URL 作为预览
+        url: url,
+        width: width,
+        height: height,
+      }];
+    });
+    
+    console.log('[PluginUpload] 图片已添加到参考图列表');
+  } catch (error: any) {
+    console.error('[PluginUpload] 插件上传处理失败:', error);
+    alert(`插件上传失败: ${error.message}`);
   }
+};
+
+// 监听来自PS插件的postMessage消息
+// 使用 ref 存储最新的处理函数，避免闭包问题
+useEffect(() => {
+  const handleMessage = (event: MessageEvent) => {
+    console.log('[PluginUpload] 收到消息:', event);
+    
+    let data = event.data;
+    
+    // 如果 data 是字符串，尝试解析为 JSON
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data);
+      } catch (e) {
+        console.log('[PluginUpload] 消息不是JSON，忽略');
+        return;
+      }
+    }
+    
+    if (data && data.type === 'uploadReferenceImage') {
+      // 支持两种模式：URL模式（推荐）和 base64 模式（兼容）
+      if (data.url) {
+        console.log('[PluginUpload] 收到URL模式上传');
+        handlePluginImageUpload(data.url, data.width || 1024, data.height || 1024, data.fileName || 'layer.png');
+      } else if (data.base64) {
+        console.log('[PluginUpload] 收到base64模式上传');
+        // base64 模式需要自己上传
+        handlePluginImageUploadBase64(data.base64, data.fileName || 'layer.png');
+      }
+    }
+  };
   
+  window.addEventListener('message', handleMessage);
+  console.log('[PluginUpload] 消息监听器已添加');
+  
+  return () => {
+    window.removeEventListener('message', handleMessage);
+    console.log('[PluginUpload] 消息监听器已移除');
+  };
+}, []); // 空依赖，只添加一次
+
+// base64 模式上传（兼容旧版本插件）
+const handlePluginImageUploadBase64 = async (base64: string, fileName: string = "layer.png") => {
   setUploading(true);
   try {
     // base64转Blob再转File
@@ -244,33 +310,27 @@ const handlePluginImageUpload = async (base64: string, fileName: string = "layer
     // 上传到图床
     const url = await uploadToScdn(file);
     
-    // 添加到参考图列表
-    setReferenceImages(prev => [...prev, {
-      file,
-      preview,
-      url,
-      width,
-      height,
-    }]);
+    // 添加到参考图列表（使用函数式更新，避免闭包问题）
+    setReferenceImages(prev => {
+      if (prev.length >= 5) {
+        alert('最多只能上传5张参考图');
+        return prev;
+      }
+      return [...prev, {
+        file,
+        preview,
+        url,
+        width,
+        height,
+      }];
+    });
   } catch (error: any) {
+    console.error('[PluginUpload] base64模式上传失败:', error);
     alert(`插件上传失败: ${error.message}`);
   } finally {
     setUploading(false);
   }
 };
-
-// 监听来自PS插件的postMessage消息
-useEffect(() => {
-  const handleMessage = (event: MessageEvent) => {
-    const data = event.data;
-    if (data && data.type === 'uploadReferenceImage' && data.base64) {
-      handlePluginImageUpload(data.base64, data.fileName || 'layer.png');
-    }
-  };
-  
-  window.addEventListener('message', handleMessage);
-  return () => window.removeEventListener('message', handleMessage);
-}, [referenceImages.length]);
 
 useEffect(() => {
 const storedUserId = localStorage.getItem('userId');
