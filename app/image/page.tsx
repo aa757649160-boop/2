@@ -310,33 +310,29 @@ useEffect(() => {
   };
 }, []); // 空依赖，只添加一次
 
-// 检测 UXP 环境
+// 检测 UXP 环境 + Hash 通信测试
 useEffect(() => {
-  try {
-    const uxpHost = (window as any).uxpHost;
-    if (uxpHost && typeof uxpHost.postMessage === 'function') {
-      console.log('[PluginUpload] 检测到UXP环境，发送就绪消息');
-      setUxpStatus('uxpHost存在 ✓');
-      try {
-        uxpHost.postMessage({
-          type: 'pageReady',
-          page: 'image',
-          timestamp: Date.now()
-        });
-        setUxpStatus('uxpHost存在，已发送pageReady ✓');
-      } catch (sendErr) {
-        const err = sendErr as Error;
-        setUxpStatus('uxpHost存在但发送失败: ' + err.message);
-      }
-    } else {
-      console.log('[PluginUpload] uxpHost不存在或postMessage不可用');
-      setUxpStatus('uxpHost不存在 ✗');
+  // 测试：如果 hash 变化，就改背景颜色
+  const handleHashChange = () => {
+    const hash = window.location.hash;
+    console.log('[HashTest] hash 变化:', hash);
+    if (hash.includes('plugin-test')) {
+      document.body.style.backgroundColor = '#ff0000';
+      document.title = '收到插件消息！';
     }
-  } catch (e) {
-    const err = e as Error;
-    console.log('[PluginUpload] 检测UXP环境出错:', err);
-    setUxpStatus('检测出错: ' + err.message);
+  };
+  
+  window.addEventListener('hashchange', handleHashChange);
+  
+  // 初始检查
+  if (window.location.hash.includes('plugin-test')) {
+    document.body.style.backgroundColor = '#ff0000';
+    document.title = '收到插件消息！';
   }
+  
+  return () => {
+    window.removeEventListener('hashchange', handleHashChange);
+  };
 }, []);
 
 // base64 模式上传（兼容旧版本插件）
