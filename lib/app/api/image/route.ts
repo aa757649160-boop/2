@@ -23,11 +23,11 @@ export async function POST(request: Request) {
     // 稳定接口：按token计费模式，基础费用 + 参考图额外费用
     // 单张2k生图约0.08积分作为基础预估
     const baseEstimate = basePrice;
-    const referenceExtra = referenceCount * 0.02; // 每张参考图额外token消耗
+    const referenceExtra = referenceCount * 0.01; // 每张参考图额外token消耗
     totalPrice = (baseEstimate + referenceExtra) * n;
   } else {
     // 普通接口：固定价格模式
-    const referencePrice = referenceCount * 0.01;
+    const referencePrice = referenceCount * 0.00;
     totalPrice = basePrice * n + referencePrice;
   }
 

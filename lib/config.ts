@@ -23,8 +23,8 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
 'claude-sonnet-4-6-thinking': { input: 0.006, output: 0.03 },
 'claude-sonnet-4-6': { input: 0.005, output: 0.03 },
 // 图片生成模型
-'gpt-image-2-1k': { input: 0.072, output: 0 },
-'gpt-image-2-2k': { input: 0.082, output: 0 },
+'gpt-image-2-1k': { input: 0.07, output: 0 },
+'gpt-image-2-2k': { input: 0.08, output: 0 },
 'gpt-image-2-4k': { input: 0.12, output: 0 },
 // gpt-image-2 稳定接口定价：提示0.03/K tokens，补全0.15/K tokens
 'gpt-image-2-stable-1k': { input: 0.36, output: 0 },
@@ -56,7 +56,7 @@ models: ['1k', '2k', '4k'],
 },
 'gpt-image-2-stable': {
 models: ['1k', '2k', '4k'],
-note: '稳定接口：提示稳定分组消耗巨大可用正常分组出图后用稳定分组放大,每多一张参考图积分多0.02',
+note: '稳定接口：提示稳定分组消耗巨大可用正常分组出图后用稳定分组放大,每多一张参考图积分多0.01',
 },
 'nano-banana-2': {
 models: ['1k', '2k', '4k'],

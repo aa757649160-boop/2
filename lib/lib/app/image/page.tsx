@@ -64,21 +64,39 @@ const [nextTaskId, setNextTaskId] = useState(1);
 
 // 根据模型和比例获取对应的分辨率
 const getResolutionByAspect = (currentModel: string, ratio: string, referenceImages: {width: number, height: number}[]) => {
+
+  /** 等比例缩放，最大边长 ≤3840，之后对齐16倍数 */
+  const clampMaxSideAndAlign16 = (w: number, h: number, maxSide = 3840) => {
+    // 第一步：限制最大边长
+    const max = Math.max(w, h);
+    let targetW = w;
+    let targetH = h;
+    if (max > maxSide) {
+      const scale = maxSide / max;
+      targetW = Math.round(w * scale);
+      targetH = Math.round(h * scale);
+    }
+
+    // 第二步：向上对齐到16的倍数
+    const align16 = (val: number) => Math.ceil(val / 16) * 16;
+    targetW = align16(targetW);
+    targetH = align16(targetH);
+
+    return { w: targetW, h: targetH };
+  };
+
   if (ratio === 'auto') {
-    const resolutions = IMAGE_RESOLUTIONS[currentModel] || [];
+    // 有参考图：取第一张，做最大边长限制 +16对齐
     if (referenceImages.length > 0) {
       const firstImg = referenceImages[0];
-      const imgRatio = firstImg.width / firstImg.height;
-      for (const res of resolutions) {
-        const [w, h] = res.split('x').map(Number);
-        const resRatio = w / h;
-        if (Math.abs(imgRatio - resRatio) < 0.1) {
-          return res;
-        }
-      }
+      const { w, h } = clampMaxSideAndAlign16(firstImg.width, firstImg.height, 3840);
+      return `${w}x${h}`;
     }
+    // 无参考图，沿用原有逻辑
+    const resolutions = IMAGE_RESOLUTIONS[currentModel] || [];
     return resolutions[0] || '1024x1024';
   }
+
   const resolutions = IMAGE_RESOLUTIONS[currentModel] || [];
   for (const res of resolutions) {
     const [w, h] = res.split('x').map(Number);
