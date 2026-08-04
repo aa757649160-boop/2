@@ -122,35 +122,49 @@ useEffect(() => {
   };
 }, []);
 
+/**
+ * 计算参考图的目标尺寸：
+ * 1. 等比例缩放，最大边长 ≤ 3840
+ * 2. 两个边长都向上对齐到 16px 的倍数
+ */
+const calculateReferenceImageSize = (width: number, height: number, maxSide = 3840) => {
+  let targetW = width;
+  let targetH = height;
+
+  // 第一步：等比例缩放，确保最大边长不超过 maxSide
+  const max = Math.max(width, height);
+  if (max > maxSide) {
+    const scale = maxSide / max;
+    targetW = Math.floor(width * scale);
+    targetH = Math.floor(height * scale);
+  }
+
+  // 第二步：向上对齐到 16 的倍数（确保两个边长都是 16 的倍数）
+  const alignTo16 = (val: number) => Math.ceil(val / 16) * 16;
+  targetW = alignTo16(targetW);
+  targetH = alignTo16(targetH);
+
+  // 再次检查对齐后最大边长是否超过 maxSide（理论上不会，因为 3840 是 16 的倍数）
+  // 如果超过了，就再缩小一点
+  const finalMax = Math.max(targetW, targetH);
+  if (finalMax > maxSide) {
+    const adjustScale = maxSide / finalMax;
+    targetW = alignTo16(Math.floor(targetW * adjustScale));
+    targetH = alignTo16(Math.floor(targetH * adjustScale));
+  }
+
+  return { width: targetW, height: targetH };
+};
+
 // 根据模型和比例获取对应的分辨率
 const getResolutionByAspect = (currentModel: string, ratio: string, referenceImages: {width: number, height: number}[]) => {
 
-  /** 等比例缩放，最大边长 ≤3840，之后对齐16倍数 */
-  const clampMaxSideAndAlign16 = (w: number, h: number, maxSide = 3840) => {
-    // 第一步：限制最大边长
-    const max = Math.max(w, h);
-    let targetW = w;
-    let targetH = h;
-    if (max > maxSide) {
-      const scale = maxSide / max;
-      targetW = Math.round(w * scale);
-      targetH = Math.round(h * scale);
-    }
-
-    // 第二步：向上对齐到16的倍数
-    const align16 = (val: number) => Math.ceil(val / 16) * 16;
-    targetW = align16(targetW);
-    targetH = align16(targetH);
-
-    return { w: targetW, h: targetH };
-  };
-
   if (ratio === 'auto') {
-    // 有参考图：取第一张，做最大边长限制 +16对齐
+    // 有参考图时：使用参考图的分辨率（最大边长 ≤3840，且都是16的倍数）
     if (referenceImages.length > 0) {
       const firstImg = referenceImages[0];
-      const { w, h } = clampMaxSideAndAlign16(firstImg.width, firstImg.height, 3840);
-      return `${w}x${h}`;
+      const { width, height } = calculateReferenceImageSize(firstImg.width, firstImg.height, 3840);
+      return `${width}x${height}`;
     }
     // 无参考图，沿用原有逻辑
     const resolutions = IMAGE_RESOLUTIONS[currentModel] || [];

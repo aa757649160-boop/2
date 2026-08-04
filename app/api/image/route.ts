@@ -3,10 +3,53 @@ import { proxyApiRequestWithKey } from '@/lib/api-proxy';
 import { getUserPoints } from '@/lib/db';
 import { MODEL_PRICING, STABLE_API } from '@/lib/config';
 
+/**
+ * 验证并修正 size 参数：
+ * 1. 确保格式正确（WxH）
+ * 2. 确保两个边长都是 16 的倍数（向上对齐）
+ * 3. 确保最大边长不超过 3840
+ */
+const validateAndFixSize = (size: string): string => {
+  if (!size || typeof size !== 'string') {
+    return '1024x1024';
+  }
+
+  const parts = size.split('x');
+  if (parts.length !== 2) {
+    return '1024x1024';
+  }
+
+  let width = parseInt(parts[0], 10);
+  let height = parseInt(parts[1], 10);
+
+  if (isNaN(width) || isNaN(height) || width <= 0 || height <= 0) {
+    return '1024x1024';
+  }
+
+  // 对齐到 16 的倍数（向上取整）
+  const alignTo16 = (val: number) => Math.ceil(val / 16) * 16;
+  width = alignTo16(width);
+  height = alignTo16(height);
+
+  // 限制最大边长为 3840
+  const maxSide = 3840;
+  const max = Math.max(width, height);
+  if (max > maxSide) {
+    const scale = maxSide / max;
+    width = alignTo16(Math.floor(width * scale));
+    height = alignTo16(Math.floor(height * scale));
+  }
+
+  return `${width}x${height}`;
+};
+
 export async function POST(request: Request) {
   // 用JSON格式，支持image参数，这是API支持的多参考图参数
   const body = await request.json();
-  const { userId, model, prompt, size, image, aspectRatio, n = 1 } = body;
+  const { userId, model, prompt, size: rawSize, image, aspectRatio, n = 1 } = body;
+
+  // 验证并修正 size 参数
+  const size = validateAndFixSize(rawSize);
 
   // 提取参考图
   const referenceCount = image?.length || 0;

@@ -62,23 +62,46 @@ const [tasks, setTasks] = useState<Task[]>([]);
 const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
 const [nextTaskId, setNextTaskId] = useState(1);
 
+/** 统一工具函数：等比例缩放，最大边长 ≤3840，宽高向上对齐16倍数 */
+const clampMaxSideAndAlign16 = (w: number, h: number, maxSide = 3840) => {
+  // 第一步：限制最大边长
+  const max = Math.max(w, h);
+  let targetW = w;
+  let targetH = h;
+  if (max > maxSide) {
+    const scale = maxSide / max;
+    targetW = Math.round(w * scale);
+    targetH = Math.round(h * scale);
+  }
+
+  // 第二步：向上对齐到16的倍数
+  const align16 = (val: number) => Math.ceil(val / 16) * 16;
+  targetW = align16(targetW);
+  targetH = align16(targetH);
+
+  return { w: targetW, h: targetH };
+};
+
 // 根据模型和比例获取对应的分辨率
-const getResolutionByAspect = (currentModel: string, ratio: string, referenceImages: {width: number, height: number}[]) => {
+const getResolutionByAspect = (currentModel: string, ratio: string, refImgs: typeof referenceImages, currentProvider: string) => {
+  // ========== 核心新增规则：gpt-image-2 + 存在参考图 强制使用缩放对齐后的参考图尺寸 ==========
+  if (currentProvider === 'gpt-image-2' && refImgs.length > 0 && ratio === 'auto') {
+    const firstImg = refImgs[0];
+    const { w, h } = clampMaxSideAndAlign16(firstImg.width, firstImg.height, 3840);
+    return `${w}x${h}`;
+  }
+
   if (ratio === 'auto') {
-    const resolutions = IMAGE_RESOLUTIONS[currentModel] || [];
-    if (referenceImages.length > 0) {
-      const firstImg = referenceImages[0];
-      const imgRatio = firstImg.width / firstImg.height;
-      for (const res of resolutions) {
-        const [w, h] = res.split('x').map(Number);
-        const resRatio = w / h;
-        if (Math.abs(imgRatio - resRatio) < 0.1) {
-          return res;
-        }
-      }
+    // 非gpt-image-2模型，原有逻辑不变
+    if (refImgs.length > 0) {
+      const firstImg = refImgs[0];
+      const { w, h } = clampMaxSideAndAlign16(firstImg.width, firstImg.height, 3840);
+      return `${w}x${h}`;
     }
+    const resolutions = IMAGE_RESOLUTIONS[currentModel] || [];
     return resolutions[0] || '1024x1024';
   }
+
   const resolutions = IMAGE_RESOLUTIONS[currentModel] || [];
   for (const res of resolutions) {
     const [w, h] = res.split('x').map(Number);
@@ -96,6 +119,7 @@ const getResolutionByAspect = (currentModel: string, ratio: string, referenceIma
   }
   return resolutions[0] || '1024x1024';
 };
+
 // 单张图片下载
 const handleSingleDownload = async (url: string, index: number) => {
   try {
@@ -194,10 +218,11 @@ setModel(models[0]);
 }, [provider]);
 useEffect(() => {
   if (model) {
-    const newRes = getResolutionByAspect(model, aspectRatio, referenceImages);
+    // 传入provider参数，用于判断gpt-image-2强制规则
+    const newRes = getResolutionByAspect(model, aspectRatio, referenceImages, provider);
     setResolution(newRes);
   }
-}, [model, aspectRatio, referenceImages]);
+}, [model, aspectRatio, referenceImages, provider]);
 
 // 获取当前激活的任务
 const activeTask = tasks.find(t => t.id === activeTaskId) || null;
@@ -225,6 +250,14 @@ setActiveTaskId(taskId);
   try {
     const fullModel = `${provider}-${model}`;
     let finalAspectRatio = aspectRatio;
+    // ========== 接口提交时，重新计算size，保证gpt-image-2规则强制生效 ==========
+    let finalSize = resolution;
+    if (provider === 'gpt-image-2' && referenceImages.length > 0 && aspectRatio === 'auto') {
+      const firstImg = referenceImages[0];
+      const { w, h } = clampMaxSideAndAlign16(firstImg.width, firstImg.height, 3840);
+      finalSize = `${w}x${h}`;
+    }
+
     if (aspectRatio === 'auto' && referenceImages.length > 0) {
       const firstImg = referenceImages[0];
       const imgRatio = firstImg.width / firstImg.height;
@@ -235,9 +268,9 @@ setActiveTaskId(taskId);
         { ratio: 4/3, value: '4:3' },
         { ratio: 3/4, value: '3:4' },
         { ratio: 3/2, value: '3:2' },
-        { ratio: 2/3, value: '2:3' },
-        { ratio: 5/4, value: '5:4' },
-        { ratio: 4/5, value: '4:5' },
+        { ratio: 2/3, value: '2/3' },
+        { ratio: 5/4, value: '5/4' },
+        { ratio: 4/5, value: '4/5' },
         { ratio: 21/9, value: '21:9' },
         { ratio: 9/21, value: '9:21' },
       ];
@@ -256,7 +289,7 @@ setActiveTaskId(taskId);
       userId,
       model: fullModel,
       prompt,
-      size: resolution,
+      size: finalSize, // 使用重新计算后的强制尺寸，不直接读取state
       aspectRatio: finalAspectRatio,
       n: count,
     };
