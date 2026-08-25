@@ -46,16 +46,20 @@ const validateAndFixSize = (size: string): string => {
 export async function POST(request: Request) {
   // 用JSON格式，支持image参数，这是API支持的多参考图参数
   const body = await request.json();
-  const { userId, model, prompt, size: rawSize, image, aspectRatio, n = 1 } = body;
-
-  // 验证并修正 size 参数
-  const size = validateAndFixSize(rawSize);
+  const { userId, model, prompt, size: rawSize, image, aspectRatio, n = 1, useReferenceSize } = body;
 
   // 提取参考图
   const referenceCount = image?.length || 0;
 
   // 判断是否为稳定接口
   const isStableApi = model.includes('-stable-');
+
+  // 验证并修正 size 参数
+  // gpt-image-2（含稳定接口）支持任意尺寸：默认自动比例 + 有参考图时，size 直接使用参考图原始尺寸，不做 3840/16 修正
+  const isGptImage2 = model.startsWith('gpt-image-2');
+  const size = (isGptImage2 && useReferenceSize && referenceCount > 0)
+    ? (rawSize || '1024x1024')
+    : validateAndFixSize(rawSize);
 
   // 检查积分
   const userPoints = await getUserPoints(userId);

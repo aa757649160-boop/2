@@ -84,11 +84,10 @@ const clampMaxSideAndAlign16 = (w: number, h: number, maxSide = 3840) => {
 
 // 根据模型和比例获取对应的分辨率
 const getResolutionByAspect = (currentModel: string, ratio: string, refImgs: typeof referenceImages, currentProvider: string) => {
-  // ========== 核心新增规则：gpt-image-2 + 存在参考图 强制使用缩放对齐后的参考图尺寸 ==========
-  if (currentProvider === 'gpt-image-2' && refImgs.length > 0 && ratio === 'auto') {
+  // ========== gpt-image-2（含稳定接口）支持任意尺寸：默认自动比例 + 存在参考图 时直接使用参考图原始尺寸 ==========
+  if ((currentProvider === 'gpt-image-2' || currentProvider === 'gpt-image-2-stable') && refImgs.length > 0 && ratio === 'auto') {
     const firstImg = refImgs[0];
-    const { w, h } = clampMaxSideAndAlign16(firstImg.width, firstImg.height, 3840);
-    return `${w}x${h}`;
+    return `${firstImg.width}x${firstImg.height}`;
   }
 
   if (ratio === 'auto') {
@@ -252,10 +251,10 @@ setActiveTaskId(taskId);
     let finalAspectRatio = aspectRatio;
     // ========== 接口提交时，重新计算size，保证gpt-image-2规则强制生效 ==========
     let finalSize = resolution;
-    if (provider === 'gpt-image-2' && referenceImages.length > 0 && aspectRatio === 'auto') {
+    const isGptImage2 = provider === 'gpt-image-2' || provider === 'gpt-image-2-stable';
+    if (isGptImage2 && referenceImages.length > 0 && aspectRatio === 'auto') {
       const firstImg = referenceImages[0];
-      const { w, h } = clampMaxSideAndAlign16(firstImg.width, firstImg.height, 3840);
-      finalSize = `${w}x${h}`;
+      finalSize = `${firstImg.width}x${firstImg.height}`;
     }
 
     if (aspectRatio === 'auto' && referenceImages.length > 0) {
@@ -295,6 +294,10 @@ setActiveTaskId(taskId);
     };
     if (referenceImages.length > 0) {
       body.image = referenceImages.map(img => img.url);
+    }
+    // gpt-image-2（含稳定接口）默认自动比例 + 有参考图：size 为参考图原始尺寸，服务端跳过 3840/16 修正
+    if (isGptImage2 && referenceImages.length > 0 && aspectRatio === 'auto') {
+      body.useReferenceSize = true;
     }
     const response = await fetch('/api/image', {
     method: 'POST',

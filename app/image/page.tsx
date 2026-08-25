@@ -157,10 +157,15 @@ const calculateReferenceImageSize = (width: number, height: number, maxSide = 38
 };
 
 // 根据模型和比例获取对应的分辨率
-const getResolutionByAspect = (currentModel: string, ratio: string, referenceImages: {width: number, height: number}[]) => {
+const getResolutionByAspect = (currentModel: string, ratio: string, referenceImages: {width: number, height: number}[], currentProvider?: string) => {
 
   if (ratio === 'auto') {
-    // 有参考图时：使用参考图的分辨率（最大边长 ≤3840，且都是16的倍数）
+    // gpt-image-2（含稳定接口）支持任意尺寸：默认自动比例 + 有参考图时，直接使用参考图的原始尺寸
+    if ((currentProvider === 'gpt-image-2' || currentProvider === 'gpt-image-2-stable') && referenceImages.length > 0) {
+      const firstImg = referenceImages[0];
+      return `${firstImg.width}x${firstImg.height}`;
+    }
+    // 其他模型有参考图时：使用参考图的分辨率（最大边长 ≤3840，且都是16的倍数）
     if (referenceImages.length > 0) {
       const firstImg = referenceImages[0];
       const { width, height } = calculateReferenceImageSize(firstImg.width, firstImg.height, 3840);
@@ -368,7 +373,7 @@ tasks.forEach(task => {
           finalAspectRatio = bestMatch;
         }
         // 直接计算最终分辨率，确保自动比例下使用参考图分辨率
-        const finalSize = getResolutionByAspect(taskModel, taskAspectRatio, taskRefImages);
+        const finalSize = getResolutionByAspect(taskModel, taskAspectRatio, taskRefImages, taskProvider);
         const body: any = {
           userId: taskUserId,
           model: fullModel,
@@ -379,6 +384,10 @@ tasks.forEach(task => {
         };
         if (taskRefImages.length > 0) {
           body.image = taskRefImages.map(img => img.url);
+        }
+        // gpt-image-2（含稳定接口）默认自动比例 + 有参考图：size 为参考图原始尺寸，服务端跳过 3840/16 修正
+        if ((taskProvider === 'gpt-image-2' || taskProvider === 'gpt-image-2-stable') && taskAspectRatio === 'auto' && taskRefImages.length > 0) {
+          body.useReferenceSize = true;
         }
         const response = await fetch('/api/image', {
           method: 'POST',
@@ -476,10 +485,10 @@ setModel(models[0]);
 }, [provider]);
 useEffect(() => {
   if (model) {
-    const newRes = getResolutionByAspect(model, aspectRatio, referenceImages);
+    const newRes = getResolutionByAspect(model, aspectRatio, referenceImages, provider);
     setResolution(newRes);
   }
-}, [model, aspectRatio, referenceImages]);
+}, [model, aspectRatio, referenceImages, provider]);
 
 // 获取当前激活的任务
 const activeTask = tasks.find(t => t.id === activeTaskId) || null;
@@ -544,7 +553,7 @@ setActiveTaskId(taskId);
       finalAspectRatio = bestMatch;
     }
     // 直接计算最终分辨率，确保自动比例下使用参考图分辨率
-    const finalSize = getResolutionByAspect(model, aspectRatio, referenceImages);
+    const finalSize = getResolutionByAspect(model, aspectRatio, referenceImages, provider);
     const body: any = {
       userId,
       model: fullModel,
@@ -555,6 +564,10 @@ setActiveTaskId(taskId);
     };
     if (referenceImages.length > 0) {
       body.image = referenceImages.map(img => img.url);
+    }
+    // gpt-image-2（含稳定接口）默认自动比例 + 有参考图：size 为参考图原始尺寸，服务端跳过 3840/16 修正
+    if ((provider === 'gpt-image-2' || provider === 'gpt-image-2-stable') && aspectRatio === 'auto' && referenceImages.length > 0) {
+      body.useReferenceSize = true;
     }
     const response = await fetch('/api/image', {
     method: 'POST',
