@@ -124,8 +124,23 @@ export default function HomePage() {
   const [imageUploading, setImageUploading] = useState(false);
   const [imageHistory, setImageHistory] = useState<Array<{time: number, images: string[], prompt: string}>>([]);
   
+  // 获取今天的日期键（YYYY-MM-DD），用于每日任务编号自动归零
+  const getTodayKey = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   const loadPersistedImageTasks = () => {
     try {
+      // 每日自动归零：新的一天清空任务列表与编号，从 1 重新开始
+      const todayKey = getTodayKey();
+      if (localStorage.getItem('imageTaskDate') !== todayKey) {
+        localStorage.setItem('imageTaskDate', todayKey);
+        localStorage.removeItem('imageTasks');
+        localStorage.removeItem('imageNextTaskId');
+        localStorage.removeItem('imageActiveTaskId');
+        return { tasks: [], nextTaskId: 1, activeTaskId: null };
+      }
       const storedTasks = localStorage.getItem('imageTasks');
       const storedNextId = localStorage.getItem('imageNextTaskId');
       const storedActiveId = localStorage.getItem('imageActiveTaskId');
@@ -153,6 +168,15 @@ export default function HomePage() {
   
   const loadPersistedVideoTasks = () => {
     try {
+      // 每日自动归零：新的一天清空任务列表与编号，从 1 重新开始
+      const todayKey = getTodayKey();
+      if (localStorage.getItem('videoTaskDate') !== todayKey) {
+        localStorage.setItem('videoTaskDate', todayKey);
+        localStorage.removeItem('videoTasks');
+        localStorage.removeItem('videoNextTaskId');
+        localStorage.removeItem('videoActiveTaskId');
+        return { tasks: [], nextTaskId: 1, activeTaskId: null };
+      }
       const storedTasks = localStorage.getItem('videoTasks');
       const storedNextId = localStorage.getItem('videoNextTaskId');
       const storedActiveId = localStorage.getItem('videoActiveTaskId');
