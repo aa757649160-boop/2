@@ -26,6 +26,10 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
 'gpt-image-2-1k': { input: 0.07, output: 0 },
 'gpt-image-2-2k': { input: 0.08, output: 0 },
 'gpt-image-2-4k': { input: 0.12, output: 0 },
+// gpt-image-2.5-sunburst 定价
+'gpt-image-2.5-sunburst-1k': { input: 0.17, output: 0 },
+'gpt-image-2.5-sunburst-2k': { input: 0.2, output: 0 },
+'gpt-image-2.5-sunburst-4k': { input: 0.25, output: 0 },
 // gpt-image-2 稳定接口定价：提示0.03/K tokens，补全0.15/K tokens
 'gpt-image-2-stable-1k': { input: 0.36, output: 0 },
 'gpt-image-2-stable-2k': { input: 0.4, output: 0 },
@@ -52,6 +56,9 @@ models: string[];
 note?: string;
 }> = {
 'gpt-image-2': {
+models: ['1k', '2k', '4k'],
+},
+'gpt-image-2.5-sunburst': {
 models: ['1k', '2k', '4k'],
 },
 'gpt-image-2-stable': {

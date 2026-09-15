@@ -321,7 +321,7 @@ export default function HomePage() {
               body.image = taskRefImages.map(img => img.url);
             }
             // gpt-image-2（含稳定接口）默认自动比例 + 有参考图：size 为参考图原始尺寸，服务端跳过 3840/16 修正
-            if ((taskProvider === 'gpt-image-2' || taskProvider === 'gpt-image-2-stable') && taskAspectRatio === 'auto' && taskRefImages.length > 0) {
+            if ((taskProvider === 'gpt-image-2' || taskProvider === 'gpt-image-2-stable' || taskProvider === 'gpt-image-2.5-sunburst') && taskAspectRatio === 'auto' && taskRefImages.length > 0) {
               body.useReferenceSize = true;
             }
             const response = await fetch('/api/image', {
@@ -400,7 +400,7 @@ export default function HomePage() {
   const getResolutionByAspect = (currentModel: string, ratio: string, referenceImages: {width: number, height: number}[], currentProvider?: string) => {
     if (ratio === 'auto') {
       // gpt-image-2（含稳定接口）支持任意尺寸：默认自动比例 + 有参考图时，直接使用参考图的原始尺寸
-      if ((currentProvider === 'gpt-image-2' || currentProvider === 'gpt-image-2-stable') && referenceImages.length > 0) {
+      if ((currentProvider === 'gpt-image-2' || currentProvider === 'gpt-image-2-stable' || currentProvider === 'gpt-image-2.5-sunburst') && referenceImages.length > 0) {
         const firstImg = referenceImages[0];
         return `${firstImg.width}x${firstImg.height}`;
       }
@@ -582,7 +582,7 @@ export default function HomePage() {
           body.image = referenceImages.map(img => img.url);
         }
         // gpt-image-2（含稳定接口）默认自动比例 + 有参考图：size 为参考图原始尺寸，服务端跳过 3840/16 修正
-        if ((provider === 'gpt-image-2' || provider === 'gpt-image-2-stable') && aspectRatio === 'auto' && referenceImages.length > 0) {
+        if ((provider === 'gpt-image-2' || provider === 'gpt-image-2-stable' || provider === 'gpt-image-2.5-sunburst') && aspectRatio === 'auto' && referenceImages.length > 0) {
           body.useReferenceSize = true;
         }
         const response = await fetch('/api/image', {

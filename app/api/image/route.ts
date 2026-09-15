@@ -95,8 +95,11 @@ export async function POST(request: Request) {
     }
     
     // 去掉1k/2k/4k后缀
+    // gpt-image-2.5-sunburst 特殊规则：选择1k发送 gpt-image-2.5-sunburst（去掉后缀），选择2k/4k保留后缀发送 gpt-image-2.5-sunburst-2k / gpt-image-2.5-sunburst-4k
     const modelParts = apiModel.split('-');
-    if (modelParts.length > 1 && (modelParts[modelParts.length - 1] === '1k' || modelParts[modelParts.length - 1] === '2k' || modelParts[modelParts.length - 1] === '4k')) {
+    const lastPart = modelParts[modelParts.length - 1];
+    const isSizeSuffix = lastPart === '1k' || lastPart === '2k' || lastPart === '4k';
+    if (modelParts.length > 1 && isSizeSuffix && (!apiModel.includes('sunburst') || lastPart === '1k')) {
       apiModel = modelParts.slice(0, -1).join('-');
     }
     
