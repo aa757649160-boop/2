@@ -461,6 +461,10 @@ export default function HomePage() {
   };
 
   const handleSingleImageDownload = async (url: string, index: number) => {
+    if (!url || url === '') {
+      alert('图片地址无效，请重新生成');
+      return;
+    }
     try {
       const response = await fetch(url);
       // 检查响应状态：上游可能被 WAF/防盗链拦截返回错误页，
@@ -1125,7 +1129,11 @@ export default function HomePage() {
                           <div className={`grid ${activeImageTask.result.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-4 w-full h-full overflow-auto p-4`}>
                             {activeImageTask.result.map((url, index) => (
                               <div key={index} className="relative group">
+                                {url ? (
                                 <img src={url} alt={`Generated ${index+1}`} className="w-full h-auto object-contain rounded-lg" />
+                                ) : (
+                                <div className="w-full aspect-square bg-gray-100 rounded-lg flex items-center justify-center text-gray-400 text-sm">图片生成失败，请重试</div>
+                                )}
                                 <button
                                   onClick={() => handleSingleImageDownload(url, index)}
                                   className="absolute bottom-2 right-2 bg-yellow-500 text-white px-3 py-1 rounded-lg hover:bg-yellow-600 text-sm opacity-0 group-hover:opacity-100 transition-opacity"

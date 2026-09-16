@@ -57,23 +57,55 @@ const BROWSER_UA =
  *
  * 任一步骤失败时回退使用原 URL，不阻断出图流程。
  */
-async function persistImages(urls: string[]): Promise<string[]> {
+async function persistImages(items: string[]): Promise<string[]> {
   const results: string[] = [];
-  for (const url of urls) {
+  for (const item of items) {
     try {
-      // 1. 下载上游图片（带浏览器 UA 绕过 WAF）
-      const resp = await fetch(url, {
-        headers: {
-          'User-Agent': BROWSER_UA,
-          Accept: 'image/*,*/*;q=0.8',
-        },
-      });
-      if (!resp.ok) {
-        results.push(url);
+      if (!item) {
+        results.push('');
         continue;
       }
-      const buf = await resp.arrayBuffer();
-      const contentType = resp.headers.get('content-type') || 'image/png';
+      // 支持两种输入：图片 URL（http 开头）或 base64 数据（data:image/xxx;base64,...）
+      let buf: ArrayBuffer | null = null;
+      let contentType = 'image/png';
+      if (item.startsWith('data:image')) {
+        // base64 图片数据（上游 b64_json 返回）
+        const m = item.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+        if (!m) {
+          results.push('');
+          continue;
+        }
+        contentType = m[1];
+        const bin = Buffer.from(m[2], 'base64');
+        buf = bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength) as ArrayBuffer;
+      } else if (item.startsWith('http')) {
+        // 1. 下载上游图片（带浏览器 UA 绕过 WAF）
+        const resp = await fetch(item, {
+          headers: {
+            'User-Agent': BROWSER_UA,
+            Accept: 'image/*,*/*;q=0.8',
+          },
+        });
+        if (!resp.ok) {
+          results.push(item);
+          continue;
+        }
+        buf = await resp.arrayBuffer();
+        contentType = resp.headers.get('content-type') || 'image/png';
+      } else {
+        // 纯 base64（无前缀），尝试直接解码
+        try {
+          const bin = Buffer.from(item, 'base64');
+          buf = bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength) as ArrayBuffer;
+        } catch (e) {
+          results.push('');
+          continue;
+        }
+      }
+      if (!buf) {
+        results.push('');
+        continue;
+      }
 
       // 2. 上传到自有图床（与前端参考图上传同一接口）
       const form = new FormData();
@@ -88,10 +120,10 @@ async function persistImages(urls: string[]): Promise<string[]> {
       if (upData && upData.success && upData.url) {
         results.push(upData.url);
       } else {
-        results.push(url);
+        results.push(item.startsWith('http') ? item : '');
       }
     } catch (e) {
-      results.push(url);
+      results.push(item.startsWith('http') ? item : '');
     }
   }
   return results;
@@ -177,6 +209,8 @@ export async function POST(request: Request) {
     } else {
       // 其他OpenAI兼容模型（比如gpt-image-2），用原来的size参数
       requestBody.size = size;
+      // 强制返回图片 url 而非 base64（部分端点默认 b64_json 导致 url 为空、图片无法显示/下载）
+      requestBody.response_format = 'url';
     }
 
     // 如果有参考图，添加image参数
@@ -198,7 +232,12 @@ export async function POST(request: Request) {
     // 处理API返回格式，提取所有图片URL
     let imageUrls: string[];
     if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-      imageUrls = data.data.map((item: {url: string}) => item.url);
+      // 兼容两种返回：url 字段或 b64_json（base64 图片数据，交给 persistImages 转存）
+      imageUrls = data.data.map((item: any) => {
+        if (item.url) return item.url;
+        if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
+        return '';
+      });
     } else if (data.url) {
       imageUrls = [data.url];
     } else {
