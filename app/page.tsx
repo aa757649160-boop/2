@@ -463,11 +463,21 @@ export default function HomePage() {
   const handleSingleImageDownload = async (url: string, index: number) => {
     try {
       const response = await fetch(url);
+      // 检查响应状态：上游可能被 WAF/防盗链拦截返回错误页，
+      // 不检查就直接下载会把 HTML 错误页存成图片文件导致"损坏"
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       const blob = await response.blob();
+      // 根据实际内容类型决定扩展名，避免 .png 文件里是 webp 导致打不开
+      let ext = 'png';
+      if (blob.type === 'image/jpeg' || blob.type === 'image/jpg') ext = 'jpg';
+      else if (blob.type === 'image/webp') ext = 'webp';
+      else if (blob.type === 'image/gif') ext = 'gif';
       const objUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = objUrl;
-      link.download = `ai-generated-image-${Date.now()}-${index+1}.png`;
+      link.download = `ai-generated-image-${Date.now()}-${index+1}.${ext}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

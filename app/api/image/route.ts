@@ -43,6 +43,60 @@ const validateAndFixSize = (size: string): string => {
   return `${width}x${height}`;
 };
 
+// 浏览器 UA：上游图片 CDN 有 WAF 反爬，服务端 fetch 必须携带浏览器 UA 才能下载
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
+/**
+ * 将上游返回的图片 URL 转存到自有图床（img.scdn.io），返回持久 URL。
+ *
+ * 为什么需要转存：
+ * 1. 上游（如 webstatic.aiproxy.vip / files.closeai.fans）返回的是临时链接，约 1 天内失效（404）；
+ * 2. 部分上游域名有 WAF 防盗链，用户浏览器或非浏览器请求会被拦截，导致前端 <img> 空白、下载损坏。
+ * 转存后前端显示与下载均使用 img.scdn.io 的持久 URL，与上游状态完全解耦。
+ *
+ * 任一步骤失败时回退使用原 URL，不阻断出图流程。
+ */
+async function persistImages(urls: string[]): Promise<string[]> {
+  const results: string[] = [];
+  for (const url of urls) {
+    try {
+      // 1. 下载上游图片（带浏览器 UA 绕过 WAF）
+      const resp = await fetch(url, {
+        headers: {
+          'User-Agent': BROWSER_UA,
+          Accept: 'image/*,*/*;q=0.8',
+        },
+      });
+      if (!resp.ok) {
+        results.push(url);
+        continue;
+      }
+      const buf = await resp.arrayBuffer();
+      const contentType = resp.headers.get('content-type') || 'image/png';
+
+      // 2. 上传到自有图床（与前端参考图上传同一接口）
+      const form = new FormData();
+      form.append('image', new Blob([buf], { type: contentType }), 'image.png');
+      form.append('cdn_domain', 'img.scdn.io');
+      form.append('outputFormat', 'auto');
+      const upResp = await fetch('https://img.scdn.io/api/v1.php', {
+        method: 'POST',
+        body: form,
+      });
+      const upData = await upResp.json();
+      if (upData && upData.success && upData.url) {
+        results.push(upData.url);
+      } else {
+        results.push(url);
+      }
+    } catch (e) {
+      results.push(url);
+    }
+  }
+  return results;
+};
+
 export async function POST(request: Request) {
   // 用JSON格式，支持image参数，这是API支持的多参考图参数
   const body = await request.json();
@@ -150,6 +204,10 @@ export async function POST(request: Request) {
     } else {
       throw new Error('API返回格式错误');
     }
+
+    // 图片转存：上游返回的 URL 是临时链接且可能有 WAF 拦截，
+    // 转存到自有图床后，前端显示与下载长期可用
+    imageUrls = await persistImages(imageUrls);
 
     // API调用成功后，扣除积分并记录扣费历史
     const { deductUserPoints } = await import('@/lib/db');
