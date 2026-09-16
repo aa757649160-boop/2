@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { proxyApiRequestWithKey } from '@/lib/api-proxy';
 import { getUserPoints } from '@/lib/db';
 import { MODEL_PRICING, STABLE_API } from '@/lib/config';
@@ -44,90 +44,6 @@ const validateAndFixSize = (size: string): string => {
 };
 
 // 浏览器 UA：上游图片 CDN 有 WAF 反爬，服务端 fetch 必须携带浏览器 UA 才能下载
-const BROWSER_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
-
-/**
- * 将上游返回的图片 URL 转存到自有图床（img.scdn.io），返回持久 URL。
- *
- * 为什么需要转存：
- * 1. 上游（如 webstatic.aiproxy.vip / files.closeai.fans）返回的是临时链接，约 1 天内失效（404）；
- * 2. 部分上游域名有 WAF 防盗链，用户浏览器或非浏览器请求会被拦截，导致前端 <img> 空白、下载损坏。
- * 转存后前端显示与下载均使用 img.scdn.io 的持久 URL，与上游状态完全解耦。
- *
- * 任一步骤失败时回退使用原 URL，不阻断出图流程。
- */
-async function persistImages(items: string[]): Promise<string[]> {
-  const results: string[] = [];
-  for (const item of items) {
-    try {
-      if (!item) {
-        results.push('');
-        continue;
-      }
-      // 支持两种输入：图片 URL（http 开头）或 base64 数据（data:image/xxx;base64,...）
-      let buf: ArrayBuffer | null = null;
-      let contentType = 'image/png';
-      if (item.startsWith('data:image')) {
-        // base64 图片数据（上游 b64_json 返回）
-        const m = item.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-        if (!m) {
-          results.push('');
-          continue;
-        }
-        contentType = m[1];
-        const bin = Buffer.from(m[2], 'base64');
-        buf = bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength) as ArrayBuffer;
-      } else if (item.startsWith('http')) {
-        // 1. 下载上游图片（带浏览器 UA 绕过 WAF）
-        const resp = await fetch(item, {
-          headers: {
-            'User-Agent': BROWSER_UA,
-            Accept: 'image/*,*/*;q=0.8',
-          },
-        });
-        if (!resp.ok) {
-          results.push(item);
-          continue;
-        }
-        buf = await resp.arrayBuffer();
-        contentType = resp.headers.get('content-type') || 'image/png';
-      } else {
-        // 纯 base64（无前缀），尝试直接解码
-        try {
-          const bin = Buffer.from(item, 'base64');
-          buf = bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength) as ArrayBuffer;
-        } catch (e) {
-          results.push('');
-          continue;
-        }
-      }
-      if (!buf) {
-        results.push('');
-        continue;
-      }
-
-      // 2. 上传到自有图床（与前端参考图上传同一接口）
-      const form = new FormData();
-      form.append('image', new Blob([buf], { type: contentType }), 'image.png');
-      form.append('cdn_domain', 'img.scdn.io');
-      form.append('outputFormat', 'auto');
-      const upResp = await fetch('https://img.scdn.io/api/v1.php', {
-        method: 'POST',
-        body: form,
-      });
-      const upData = await upResp.json();
-      if (upData && upData.success && upData.url) {
-        results.push(upData.url);
-      } else {
-        results.push(item.startsWith('http') ? item : '');
-      }
-    } catch (e) {
-      results.push(item.startsWith('http') ? item : '');
-    }
-  }
-  return results;
-};
 
 export async function POST(request: Request) {
   // 用JSON格式，支持image参数，这是API支持的多参考图参数
@@ -232,7 +148,7 @@ export async function POST(request: Request) {
     // 处理API返回格式，提取所有图片URL
     let imageUrls: string[];
     if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-      // 兼容两种返回：url 字段或 b64_json（base64 图片数据，交给 persistImages 转存）
+      // 兼容两种返回：url 字段或 b64_json（base64 图片数据，转为 data URI 供前端直接显示）
       imageUrls = data.data.map((item: any) => {
         if (item.url) return item.url;
         if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
@@ -243,10 +159,6 @@ export async function POST(request: Request) {
     } else {
       throw new Error('API返回格式错误');
     }
-
-    // 图片转存：上游返回的 URL 是临时链接且可能有 WAF 拦截，
-    // 转存到自有图床后，前端显示与下载长期可用
-    imageUrls = await persistImages(imageUrls);
 
     // API调用成功后，扣除积分并记录扣费历史
     const { deductUserPoints } = await import('@/lib/db');
