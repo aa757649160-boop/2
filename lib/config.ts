@@ -1,4 +1,4 @@
-// 主API和备用API的基础URL
+﻿// 主API和备用API的基础URL
 export const MAIN_API_BASE_URL = 'https://ai.comfly.org';
 export const BACKUP_API_BASE_URL = 'https://grsaapi.com';
 // 收款码图片路径
@@ -34,6 +34,10 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
 'gpt-image-2-stable-1k': { input: 0.36, output: 0 },
 'gpt-image-2-stable-2k': { input: 0.4, output: 0 },
 'gpt-image-2-stable-4k': { input: 0.5, output: 0 },
+// gpt-image-2.5-sunburst 稳定接口定价（与 gpt-image-2 稳定接口同线路）
+'gpt-image-2.5-sunburst-stable-1k': { input: 0.4, output: 0 },
+'gpt-image-2.5-sunburst-stable-2k': { input: 0.45, output: 0 },
+'gpt-image-2.5-sunburst-stable-4k': { input: 0.54, output: 0 },
 'nano-banana-2-1k': { input: 0.24, output: 0 },
 'nano-banana-2-2k': { input: 0.3, output: 0 },
 'nano-banana-2-4k': { input: 0.35, output: 0 },
@@ -64,6 +68,10 @@ models: ['1k', '2k', '4k'],
 'gpt-image-2-stable': {
 models: ['1k', '2k', '4k'],
 note: '稳定接口：提示稳定分组消耗巨大可用正常分组出图后用稳定分组放大,每多一张参考图积分多0.01',
+},
+'gpt-image-2.5-sunburst-stable': {
+models: ['1k', '2k', '4k'],
+note: '稳定接口：与 gpt-image-2 稳定接口相同线路，出图更稳定',
 },
 'nano-banana-2': {
 models: ['1k', '2k', '4k'],

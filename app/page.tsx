@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { useState, useEffect, useRef } from 'react';
 import Navbar from '@/components/Navbar';
 import { IMAGE_MODELS, IMAGE_RESOLUTIONS, MODEL_PRICING, IMAGE_PRESETS, VIDEO_MODELS, RECHARGE_TIERS, PAYMENT_QRCODE } from '@/lib/config';
@@ -345,7 +345,7 @@ export default function HomePage() {
               body.image = taskRefImages.map(img => img.url);
             }
             // gpt-image-2（含稳定接口）默认自动比例 + 有参考图：size 为参考图原始尺寸，服务端跳过 3840/16 修正
-            if ((taskProvider === 'gpt-image-2' || taskProvider === 'gpt-image-2-stable' || taskProvider === 'gpt-image-2.5-sunburst') && taskAspectRatio === 'auto' && taskRefImages.length > 0) {
+            if ((taskProvider === 'gpt-image-2' || taskProvider === 'gpt-image-2-stable' || taskProvider === 'gpt-image-2.5-sunburst' || taskProvider === 'gpt-image-2.5-sunburst-stable') && taskAspectRatio === 'auto' && taskRefImages.length > 0) {
               body.useReferenceSize = true;
             }
             const response = await fetch('/api/image', {
@@ -1007,7 +1007,7 @@ export default function HomePage() {
                       >
                         {Object.keys(IMAGE_MODELS).map(p => (
                           <option key={p} value={p}>
-                            {p === 'gpt-image-2-stable' ? 'gpt-image-2（稳定接口）' : p === 'nano-banana-2-stable' ? 'nano-banana-2（稳定接口）' : p}
+                            {p === 'gpt-image-2-stable' ? 'gpt-image-2（稳定接口）' : p === 'gpt-image-2.5-sunburst-stable' ? 'gpt-image-2.5-sunburst（稳定接口）' : p === 'nano-banana-2-stable' ? 'nano-banana-2（稳定接口）' : p}
                           </option>
                         ))}
                       </select>
