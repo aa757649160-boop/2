@@ -177,19 +177,14 @@ const getResolutionByAspect = (currentModel: string, ratio: string, referenceIma
   }
 
   const resolutions = IMAGE_RESOLUTIONS[currentModel] || [];
-  for (const res of resolutions) {
-    const [w, h] = res.split('x').map(Number);
-    if (ratio === '1:1' && w === h) return res;
-    if (ratio === '16:9' && Math.abs(w/h - 16/9) < 0.01) return res;
-    if (ratio === '9:16' && Math.abs(w/h - 9/16) < 0.01) return res;
-    if (ratio === '4:3' && Math.abs(w/h - 4/3) < 0.01) return res;
-    if (ratio === '3:4' && Math.abs(w/h - 3/4) < 0.01) return res;
-    if (ratio === '3:2' && Math.abs(w/h - 3/2) < 0.01) return res;
-    if (ratio === '2:3' && Math.abs(w/h - 2/3) < 0.01) return res;
-    if (ratio === '5:4' && Math.abs(w/h - 5/4) < 0.01) return res;
-    if (ratio === '4:5' && Math.abs(w/h - 4/5) < 0.01) return res;
-    if (ratio === '21:9' && Math.abs(w/h - 21/9) < 0.01) return res;
-    if (ratio === '9:21' && Math.abs(w/h - 9/21) < 0.01) return res;
+  // 比例 → 分辨率数组下标（顺序与 IMAGE_RESOLUTIONS 各档位条目顺序一致）
+  const RATIO_TO_INDEX: Record<string, number> = {
+    '1:1': 0, '16:9': 1, '9:16': 2, '4:3': 3, '3:4': 4,
+    '3:2': 5, '2:3': 6, '5:4': 7, '4:5': 8, '21:9': 9, '9:21': 10,
+  };
+  const idx = RATIO_TO_INDEX[ratio];
+  if (idx !== undefined && resolutions[idx]) {
+    return resolutions[idx];
   }
   return resolutions[0] || '1024x1024';
 };
