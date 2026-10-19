@@ -157,7 +157,7 @@ export async function loginUser(username: string, password: string) {
 
 // 保存验证码
 export async function saveVerificationCode(email: string, code: string) {
-  const expiresAt = new Date(Date.now() + 5 * 60 * 100); // 5分钟过期
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5分钟过期（300000ms）
   await sql`
     INSERT INTO verification_codes (email, code, expires_at)
     VALUES (${email}, ${code}, ${expiresAt})
