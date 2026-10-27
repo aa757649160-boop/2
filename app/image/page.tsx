@@ -8,8 +8,8 @@ const uploadToScdn = async (file: File): Promise<string> => {
   const formData = new FormData();
   // 添加图片文件
   formData.append('image', file);
-  // 指定CDN域名，使用用户配置的img.scdn.io
-  formData.append('cdn_domain', 'img.scdn.io');
+  // 指定CDN域名，使用CloudFlare-海外线路，确保境外上游可下载参考图
+  formData.append('cdn_domain', 'cloudflareimg.cdn.sn');
   // 推荐使用自动输出格式，自动优化图片
   formData.append('outputFormat', 'auto');
   // 调用图床API上传
@@ -968,10 +968,9 @@ className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ou
 <textarea
 value={prompt}
 onChange={(e) => setPrompt(e.target.value)}
-placeholder="尽量详细的描述您想要生成的图片"
+placeholder="尽量详细的描述您想要的图片"
 rows={3}
 className="w-full border border-gray-200 rounded-2xl px-6 py-4 pr-32 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent shadow-sm resize-none"
-disabled={uploading}
  />
 <button
 type="submit"
