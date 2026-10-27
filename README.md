@@ -109,3 +109,9 @@ npm run dev
 ```
 
 访问 http://localhost:3000 即可查看应用。
+
+## 部署说明
+
+- 图床线路：`cloudflareimg.cdn.sn`（CloudFlare-海外，供境外主上游下载参考图）
+- HTML 缓存策略：`no-store`（避免 EdgeOne/CDN 缓存旧版本导致前端加载旧代码）
+- 部署触发标记：2026-10-27，用于强制刷新 Vercel CDN 旧缓存
