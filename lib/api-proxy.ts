@@ -6,6 +6,27 @@ type ApiConfig = {
   baseUrl: string;
   apiKey: string;
 };
+
+/**
+ * 从上游响应中提取具体错误信息（不暴露密钥）
+ */
+async function extractErrorMessage(response: Response): Promise<string> {
+  let detail = `${response.status} ${response.statusText}`;
+  try {
+    const data = await response.json();
+    if (data?.error?.message) {
+      detail = data.error.message;
+    } else if (data?.error) {
+      detail = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+    } else if (data?.message) {
+      detail = data.message;
+    }
+  } catch (e) {
+    // 响应体不是JSON，保留 statusText
+  }
+  return detail;
+}
+
 async function tryApiRequest(
   apiConfig: ApiConfig,
   endpoint: string,
@@ -26,16 +47,23 @@ async function tryApiRequest(
     requestBody = method === 'POST' ? JSON.stringify(body) : undefined;
   }
   
-  const response = await fetch(`${apiConfig.baseUrl}${endpoint}`, {
-    method,
-    headers,
-    body: requestBody,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiConfig.baseUrl}${endpoint}`, {
+      method,
+      headers,
+      body: requestBody,
+    });
+  } catch (err: any) {
+    throw new Error(`连接上游 ${apiConfig.baseUrl} 失败: ${err.message}`);
+  }
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.statusText}`);
+    const detail = await extractErrorMessage(response);
+    throw new Error(`上游 ${apiConfig.baseUrl} 返回错误: ${detail}`);
   }
   return response;
 }
+
 export async function proxyApiRequest(
   endpoint: string,
   body: any,
@@ -44,18 +72,19 @@ export async function proxyApiRequest(
   // 先尝试主API
   try {
     return await tryApiRequest(MAIN_API, endpoint, body, method);
-  } catch (mainError) {
+  } catch (mainError: any) {
     console.warn('Main API failed, trying backup API:', mainError);
     
     // 主API失败，尝试备用API
     try {
       return await tryApiRequest(BACKUP_API, endpoint, body, method);
-    } catch (backupError) {
+    } catch (backupError: any) {
       console.error('Both APIs failed:', backupError);
-      throw new Error('所有API服务暂时不可用，请稍后再试');
+      throw new Error(`所有API服务暂时不可用。主API：${mainError.message}；备用API：${backupError.message}`);
     }
   }
 }
+
 export async function proxyStreamRequest(
   endpoint: string,
   body: any
@@ -73,24 +102,30 @@ export async function proxyStreamRequest(
     if (response.ok) {
       return response;
     }
-    throw new Error(`Main API failed: ${response.statusText}`);
-  } catch (mainError) {
+    const detail = await extractErrorMessage(response);
+    throw new Error(`上游 ${MAIN_API.baseUrl} 返回错误: ${detail}`);
+  } catch (mainError: any) {
     console.warn('Main API stream failed, trying backup API:', mainError);
     
     // 主API失败，尝试备用API
-    const response = await fetch(`${BACKUP_API.baseUrl}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${BACKUP_API.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      console.error('Backup API stream failed:', response.statusText);
-      throw new Error('所有API服务暂时不可用，请稍后再试');
+    try {
+      const response = await fetch(`${BACKUP_API.baseUrl}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${BACKUP_API.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (response.ok) {
+        return response;
+      }
+      const detail = await extractErrorMessage(response);
+      throw new Error(`上游 ${BACKUP_API.baseUrl} 返回错误: ${detail}`);
+    } catch (backupError: any) {
+      console.error('Backup API stream failed:', backupError);
+      throw new Error(`所有API服务暂时不可用。主API：${mainError.message}；备用API：${backupError.message}`);
     }
-    return response;
   }
 }
 
