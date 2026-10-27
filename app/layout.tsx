@@ -4,6 +4,11 @@ import { Inter } from 'next/font/google';
 import GlobalAnnouncement from '@/components/GlobalAnnouncement';
 import { globalAnnouncement } from '@/config/announcement';
 const inter = Inter({ subsets: ['latin'] });
+
+// 所有页面强制动态渲染，HTML 返回 no-store，避免 EdgeOne/CDN 缓存旧版本导致前端加载旧代码
+// （参考图图床线路、新功能等改动部署后都能立即生效，无需清 CDN 缓存）
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'AI Studio',
   description: 'AI 绘图、视频生成平台',
