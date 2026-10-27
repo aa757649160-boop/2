@@ -53,6 +53,9 @@ export async function POST(request: Request) {
   // 提取参考图
   const referenceCount = image?.length || 0;
 
+  // 多图编辑场景：gpt-image 编辑接口通常只支持 n=1（对齐上游成功测试），多图时固定 n=1
+  const effectiveN = (image && image.length > 1) ? 1 : n;
+
   // 判断是否为稳定接口
   const isStableApi = model.includes('-stable-');
 
@@ -73,11 +76,11 @@ export async function POST(request: Request) {
     // 单张2k生图约0.08积分作为基础预估
     const baseEstimate = basePrice;
     const referenceExtra = referenceCount * 0.02; // 每张参考图额外token消耗
-    totalPrice = (baseEstimate + referenceExtra) * n;
+    totalPrice = (baseEstimate + referenceExtra) * effectiveN;
   } else {
     // 普通接口：固定价格模式
     const referencePrice = referenceCount * 0.01;
-    totalPrice = basePrice * n + referencePrice;
+    totalPrice = basePrice * effectiveN + referencePrice;
   }
 
   if (userPoints < totalPrice) {
@@ -108,7 +111,7 @@ export async function POST(request: Request) {
     let requestBody: any = {
       model: apiModel,
       prompt,
-      n: n,
+      n: effectiveN,
     };
     
     // 区分不同模型的参数格式
