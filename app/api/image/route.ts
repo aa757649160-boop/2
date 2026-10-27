@@ -137,8 +137,18 @@ export async function POST(request: Request) {
     // 稳定接口使用独立的API密钥
     const apiKey = isStableApi ? STABLE_API.apiKey : undefined;
     
+    // 最小改动修复：多张参考图改用 OpenAI 兼容的 edits 端点
+    // /v1/images/edits 的 JSON body 中 image 传字符串数组即标准多图格式；
+    // 而 /v1/images/generations 的 image 字段多数聚合站只兼容单图，传多元素数组会报错。
+    // 因此仅在「多张参考图 + OpenAI 兼容图片模型」时切换 edits；单图/无图保持 generations，不破坏已验证行为。
+    const hasMultipleReferences = image && image.length > 1;
+    const isOpenAICompatImageModel = apiModel.startsWith('gpt-image-');
+    const imageEndpoint = (hasMultipleReferences && isOpenAICompatImageModel)
+      ? '/v1/images/edits'
+      : '/v1/images/generations';
+
     const response = await proxyApiRequestWithKey(
-      '/v1/images/generations',
+      imageEndpoint,
       requestBody,
       apiKey
     );
