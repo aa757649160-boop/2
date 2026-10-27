@@ -8,7 +8,7 @@ type ApiConfig = {
 };
 
 /**
- * 从上游响应中提取具体错误信息（不暴露密钥）
+ * 从上游响应中提取具体错误信息（不暴露密钥，仅供内部日志排查）
  */
 async function extractErrorMessage(response: Response): Promise<string> {
   let detail = `${response.status} ${response.statusText}`;
@@ -64,6 +64,9 @@ async function tryApiRequest(
   return response;
 }
 
+// 统一面向用户的报错文案（不暴露内部细节）
+const USER_FACING_ERROR = '所有API服务暂时不可用，请稍后再试';
+
 export async function proxyApiRequest(
   endpoint: string,
   body: any,
@@ -80,7 +83,7 @@ export async function proxyApiRequest(
       return await tryApiRequest(BACKUP_API, endpoint, body, method);
     } catch (backupError: any) {
       console.error('Both APIs failed:', backupError);
-      throw new Error(`所有API服务暂时不可用。主API：${mainError.message}；备用API：${backupError.message}`);
+      throw new Error(USER_FACING_ERROR);
     }
   }
 }
@@ -124,7 +127,7 @@ export async function proxyStreamRequest(
       throw new Error(`上游 ${BACKUP_API.baseUrl} 返回错误: ${detail}`);
     } catch (backupError: any) {
       console.error('Backup API stream failed:', backupError);
-      throw new Error(`所有API服务暂时不可用。主API：${mainError.message}；备用API：${backupError.message}`);
+      throw new Error(USER_FACING_ERROR);
     }
   }
 }
@@ -148,7 +151,12 @@ export async function proxyApiRequestWithKey(
       baseUrl: MAIN_API.baseUrl,
       apiKey: customApiKey,
     };
-    return await tryApiRequest(apiConfig, endpoint, body, method);
+    try {
+      return await tryApiRequest(apiConfig, endpoint, body, method);
+    } catch (err: any) {
+      console.error('Stable API failed:', err);
+      throw new Error(USER_FACING_ERROR);
+    }
   }
   
   // 没有自定义密钥，走正常的主备切换逻辑
