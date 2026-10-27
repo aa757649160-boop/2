@@ -137,15 +137,9 @@ export async function POST(request: Request) {
     // 稳定接口使用独立的API密钥
     const apiKey = isStableApi ? STABLE_API.apiKey : undefined;
     
-    // 根据上游官方调试实测（ai.comfly.org）：/v1/images/generations 本身支持 image 数组（多参考图），
-    // 且官方调试成功的请求未传 size。因此统一走 generations，不切换 edits。
+    // 统一走 generations 端点：上游官方调试实测支持 image 数组（多参考图），
+    // 且官方明确支持 size（有参考图时按第一张参考图尺寸生成，保留原有 size 逻辑不变）。
     const imageEndpoint = '/v1/images/generations';
-
-    // 多张参考图时，对齐上游已验证成功的调用：不传 size，让上游按参考图自动处理，
-    // 避免参考图原始尺寸不符合 gpt-image-2 约束（宽高为16倍数/单边≤3840/宽高比1:3~3:1）而触发 400。
-    if (image && image.length > 1) {
-      delete requestBody.size;
-    }
 
     const response = await proxyApiRequestWithKey(
       imageEndpoint,
