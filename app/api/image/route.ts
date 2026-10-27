@@ -144,6 +144,7 @@ export async function POST(request: Request) {
     // 且官方明确支持 size（有参考图时按第一张参考图尺寸生成，保留原有 size 逻辑不变）。
     const imageEndpoint = '/v1/images/generations';
 
+    console.log('[image] request:', imageEndpoint, JSON.stringify(requestBody));
     const response = await proxyApiRequestWithKey(
       imageEndpoint,
       requestBody,
@@ -174,6 +175,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ imageUrls });
   } catch (error: any) {
+    console.error('[image] error:', error.message);
     // API调用失败，不需要恢复积分，因为还没扣
     return NextResponse.json({ error: error.message });
   }
