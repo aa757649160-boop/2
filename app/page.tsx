@@ -1175,20 +1175,6 @@ export default function HomePage() {
                     </div>
                   )}
                 </div>
-                {activeImageTask?.result && activeImageTask.result.length > 0 && (
-                  <div className="flex justify-end mb-4">
-                    <button
-                      onClick={() => handleBatchImageDownload(activeImageTask.result!)}
-                      disabled={isImageDownloading}
-                      className="bg-yellow-500 text-white px-4 py-2 rounded-xl hover:bg-yellow-600 flex items-center gap-2 transition-colors shadow-sm disabled:opacity-50 whitespace-nowrap"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 00-3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      {isImageDownloading ? '下载中...' : '批量下载全部'}
-                    </button>
-                  </div>
-                )}
                 {referenceImages.length > 0 && (
                   <div className="mb-4">
                     <label className="block text-xs font-medium text-gray-500 mb-2">参考图 ({referenceImages.length}/5)</label>
