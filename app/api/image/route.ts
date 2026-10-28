@@ -1,37 +1,20 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { proxyApiRequestWithKey } from '@/lib/api-proxy';
 import { getUserPoints } from '@/lib/db';
 import { MODEL_PRICING, STABLE_API } from '@/lib/config';
 
-/**
- * 验证并修正 size 参数：
- * 1. 确保格式正确（WxH）
- * 2. 确保两个边长都是 16 的倍数（向上对齐）
- * 3. 确保最大边长不超过 3840
- */
+export const maxDuration = 60;
+
 const validateAndFixSize = (size: string): string => {
-  if (!size || typeof size !== 'string') {
-    return '1024x1024';
-  }
-
+  if (!size || typeof size !== 'string') return '1024x1024';
   const parts = size.split('x');
-  if (parts.length !== 2) {
-    return '1024x1024';
-  }
-
+  if (parts.length !== 2) return '1024x1024';
   let width = parseInt(parts[0], 10);
   let height = parseInt(parts[1], 10);
-
-  if (isNaN(width) || isNaN(height) || width <= 0 || height <= 0) {
-    return '1024x1024';
-  }
-
-  // 对齐到 16 的倍数（向上取整）
+  if (isNaN(width) || isNaN(height) || width <= 0 || height <= 0) return '1024x1024';
   const alignTo16 = (val: number) => Math.ceil(val / 16) * 16;
   width = alignTo16(width);
   height = alignTo16(height);
-
-  // 限制最大边长为 3840
   const maxSide = 3840;
   const max = Math.max(width, height);
   if (max > maxSide) {
@@ -39,112 +22,90 @@ const validateAndFixSize = (size: string): string => {
     width = alignTo16(Math.floor(width * scale));
     height = alignTo16(Math.floor(height * scale));
   }
-
   return `${width}x${height}`;
 };
 
-// 浏览器 UA：上游图片 CDN 有 WAF 反爬，服务端 fetch 必须携带浏览器 UA 才能下载
-
 export async function POST(request: Request) {
-  // 用JSON格式，支持image参数，这是API支持的多参考图参数
-  const body = await request.json();
-  const { userId, model, prompt, size: rawSize, image, aspectRatio, n = 1, useReferenceSize } = body;
-
-  // 提取参考图
-  const referenceCount = image?.length || 0;
-
-  // 多图编辑场景：gpt-image 编辑接口通常只支持 n=1（对齐上游成功测试），多图时固定 n=1
-  const effectiveN = (image && image.length > 1) ? 1 : n;
-
-  // 判断是否为稳定接口
-  const isStableApi = model.includes('-stable-');
-
-  // 验证并修正 size 参数
-  // gpt-image-2（含稳定接口）支持任意尺寸：默认自动比例 + 有参考图时，size 直接使用参考图原始尺寸，不做 3840/16 修正
-  const isGptImage2 = model.startsWith('gpt-image-2');
-  const size = (isGptImage2 && useReferenceSize && referenceCount > 0)
-    ? (rawSize || '1024x1024')
-    : validateAndFixSize(rawSize);
-
-  // 检查积分
-  const userPoints = await getUserPoints(userId);
-  const basePrice = MODEL_PRICING[model]?.input || 0;
-  
-  let totalPrice: number;
-  if (isStableApi) {
-    // 稳定接口：按token计费模式，基础费用 + 参考图额外费用
-    // 单张2k生图约0.08积分作为基础预估
-    const baseEstimate = basePrice;
-    const referenceExtra = referenceCount * 0.02; // 每张参考图额外token消耗
-    totalPrice = (baseEstimate + referenceExtra) * effectiveN;
-  } else {
-    // 普通接口：固定价格模式
-    const referencePrice = referenceCount * 0.01;
-    totalPrice = basePrice * effectiveN + referencePrice;
-  }
-
-  if (userPoints < totalPrice) {
-    return NextResponse.json({ error: '积分不足' });
-  }
-
   try {
-    // 构建请求体，用API支持的image参数
-    // 模型名字：只有当最后一个部分是1k/2k/4k的时候，才去掉后缀，其他后缀保留
+    const body = await request.json();
+    const { userId, model, prompt, size: rawSize, image, aspectRatio, n = 1, useReferenceSize } = body;
+
+    if (!userId) {
+      return NextResponse.json({ error: '用户未登录' });
+    }
+    if (!prompt || !prompt.trim()) {
+      return NextResponse.json({ error: '提示词不能为空' });
+    }
+
+    const referenceCount = image?.length || 0;
+    const effectiveN = (image && image.length > 1) ? 1 : n;
+    const isStableApi = model.includes('-stable-');
+    const isGptImage2 = model.startsWith('gpt-image-2');
+    const size = (isGptImage2 && useReferenceSize && referenceCount > 0)
+      ? (rawSize || '1024x1024')
+      : validateAndFixSize(rawSize);
+
+    let userPoints = 0;
+    try {
+      userPoints = await getUserPoints(userId);
+    } catch (e: any) {
+      console.error('[image] getUserPoints error:', e.message);
+      return NextResponse.json({ error: '查询积分失败: ' + e.message });
+    }
+
+    const basePrice = MODEL_PRICING[model]?.input || 0;
+    let totalPrice: number;
+    if (isStableApi) {
+      const referenceExtra = referenceCount * 0.02;
+      totalPrice = (basePrice + referenceExtra) * effectiveN;
+    } else {
+      const referencePrice = referenceCount * 0.01;
+      totalPrice = basePrice * effectiveN + referencePrice;
+    }
+
+    if (userPoints < totalPrice) {
+      return NextResponse.json({ error: `积分不足，需要${totalPrice.toFixed(2)}积分，当前${userPoints.toFixed(2)}` });
+    }
+
     const parts = model.split('-');
     let apiModel = model;
-    
-    // 稳定接口：去掉stable后缀
     if (isStableApi) {
-      // gpt-image-2-stable-1k -> gpt-image-2-1k
       apiModel = model.replace('-stable-', '-');
     }
-    
-    // 去掉1k/2k/4k后缀
-    // gpt-image-2.5-sunburst 特殊规则：选择1k发送 gpt-image-2.5-sunburst（去掉后缀），选择2k/4k保留后缀发送 gpt-image-2.5-sunburst-2k / gpt-image-2.5-sunburst-4k
     const modelParts = apiModel.split('-');
     const lastPart = modelParts[modelParts.length - 1];
     const isSizeSuffix = lastPart === '1k' || lastPart === '2k' || lastPart === '4k';
     if (modelParts.length > 1 && isSizeSuffix && (!apiModel.includes('sunburst') || lastPart === '1k')) {
       apiModel = modelParts.slice(0, -1).join('-');
     }
-    
+
     let requestBody: any = {
       model: apiModel,
       prompt,
       n: effectiveN,
     };
-    
-    // 区分不同模型的参数格式
+
     if (apiModel.startsWith('nano-banana')) {
-      // 替换为新的gemini模型，前端显示不变，实际调用新模型
       apiModel = 'gemini-3.1-flash-image-preview';
       requestBody.model = apiModel;
-      // 新模型和原来的nano-banana-2参数格式完全兼容，无需修改其他参数
       const imageSize = parts[parts.length - 1].toUpperCase();
       requestBody.image_size = imageSize;
       if (aspectRatio && aspectRatio !== 'auto') {
         requestBody.aspect_ratio = aspectRatio;
       }
     } else {
-      // 其他OpenAI兼容模型（比如gpt-image-2），用原来的size参数
       requestBody.size = size;
-      // 强制返回图片 url 而非 base64（部分端点默认 b64_json 导致 url 为空、图片无法显示/下载）
       requestBody.response_format = 'url';
     }
 
-    // 如果有参考图，添加image参数
     if (image && image.length > 0) {
       requestBody.image = image;
     }
 
-    // 稳定接口使用独立的API密钥
     const apiKey = isStableApi ? STABLE_API.apiKey : undefined;
-    
-    // 统一走 generations 端点：上游官方调试实测支持 image 数组（多参考图），
-    // 且官方明确支持 size（有参考图时按第一张参考图尺寸生成，保留原有 size 逻辑不变）。
     const imageEndpoint = '/v1/images/generations';
 
-    console.log('[image] request:', imageEndpoint, JSON.stringify(requestBody));
+    console.log('[image] request:', imageEndpoint, JSON.stringify(requestBody).substring(0, 500));
     const response = await proxyApiRequestWithKey(
       imageEndpoint,
       requestBody,
@@ -153,10 +114,8 @@ export async function POST(request: Request) {
 
     const data = await response.json();
 
-    // 处理API返回格式，提取所有图片URL
     let imageUrls: string[];
     if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-      // 兼容两种返回：url 字段或 b64_json（base64 图片数据，转为 data URI 供前端直接显示）
       imageUrls = data.data.map((item: any) => {
         if (item.url) return item.url;
         if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
@@ -165,18 +124,17 @@ export async function POST(request: Request) {
     } else if (data.url) {
       imageUrls = [data.url];
     } else {
+      console.error('[image] unexpected response:', JSON.stringify(data).substring(0, 500));
       throw new Error('API返回格式错误');
     }
 
-    // API调用成功后，扣除积分并记录扣费历史
     const { deductUserPoints } = await import('@/lib/db');
     const description = `绘图生成：${model}${isStableApi ? '（稳定接口）' : ''}`;
     await deductUserPoints(userId, totalPrice, description);
 
     return NextResponse.json({ imageUrls });
   } catch (error: any) {
-    console.error('[image] error:', error.message);
-    // API调用失败，不需要恢复积分，因为还没扣
-    return NextResponse.json({ error: error.message });
+    console.error('[image] fatal error:', error.message, error.stack);
+    return NextResponse.json({ error: error.message || '服务器内部错误' }, { status: 200 });
   }
 }
