@@ -91,15 +91,12 @@ const activeTaskRef = useRef<Task | null>(null);
 useEffect(() => { referenceImagesRef.current = referenceImages; }, [referenceImages]);
 useEffect(() => { activeTaskRef.current = tasks.find(t => t.id === activeTaskId) || null; }, [tasks, activeTaskId]);
 
-// 初始化：从localStorage加载历史参考图 + 读取URL参数
 useEffect(() => {
   initPSPluginBridge();
   setIsPSPlugin(isInPhotoshopPlugin());
 
   const stored = loadRefImagesFromStorage();
-  if (stored.length > 0) {
-    setReferenceImages(stored);
-  }
+  if (stored.length > 0) setReferenceImages(stored);
 
   const url = new URL(window.location.href);
   let psRef = url.searchParams.get('ps_ref');
@@ -325,12 +322,10 @@ return (
 <img src={url} alt={`Generated ${index+1}`} className="w-full h-auto object-contain rounded-lg" />
 <div className="absolute bottom-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
 <button onClick={()=>handleSingleDownload(url,index)} className="bg-yellow-500 text-white px-3 py-1 rounded-lg hover:bg-yellow-600 text-sm">下载</button>
-{isPSPlugin&&(<button onClick={()=>handleSendToPS(url)} disabled={sendingToPS===url} className="bg-blue-500 text-white px-3 py-1 rounded-lg hover:bg-blue-600 text-sm disabled:opacity-50">{sendingToPS===url?'发送中...':'发送到PS'}</button>)}
 </div></div>))}
 </div>
-<div className="absolute bottom-4 right-4 flex gap-2">
+<div className="absolute bottom-4 right-4">
 <button onClick={()=>handleBatchDownload(activeTask.result!)} className="bg-yellow-500 text-white px-4 py-2 rounded-xl hover:bg-yellow-600 flex items-center gap-2 shadow-sm">批量下载</button>
-{isPSPlugin&&(<button onClick={()=>{if(activeTask.result)activeTask.result.forEach((u,i)=>setTimeout(()=>handleSendToPS(u),i*500));}} disabled={!!sendingToPS} className="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600 flex items-center gap-2 shadow-sm disabled:opacity-50">全部发送到PS</button>)}
 </div></>
 ):(<div className="text-gray-500"><div className="flex flex-col items-center"><div className="w-12 h-12 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin mb-4"></div><p>生成中...</p></div></div>)}
 </>):(
