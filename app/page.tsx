@@ -1,3 +1,4 @@
+"use client";
 import { useState, useEffect, useRef } from 'react';
 import Navbar from '@/components/Navbar';
 import { IMAGE_MODELS, IMAGE_RESOLUTIONS, MODEL_PRICING, IMAGE_PRESETS, VIDEO_MODELS, RECHARGE_TIERS, PAYMENT_QRCODE } from '@/lib/config';
