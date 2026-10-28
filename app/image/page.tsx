@@ -47,6 +47,46 @@ const callImageApi = async (body: any, retries = 2): Promise<any> => {
   throw new Error('请求失败');
 };
 
+// 从URL推断文件扩展名
+const getExtFromUrl = (url: string): string => {
+  try {
+    const u = new URL(url);
+    const pathname = u.pathname;
+    const match = pathname.match(/\.(png|jpg|jpeg|webp|gif|bmp)$/i);
+    if (match) return match[1].toLowerCase();
+  } catch {}
+  return 'png';
+};
+
+// 下载单张图片：先尝试fetch→blob→a标签下载，失败则用a标签直接下载
+const downloadImage = async (url: string, filename?: string): Promise<void> => {
+  const ext = getExtFromUrl(url);
+  const name = filename || `ai-${Date.now()}.${ext}`;
+  try {
+    const resp = await fetch(url, { mode: 'cors' });
+    if (!resp.ok) throw new Error('fetch failed');
+    const blob = await resp.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objUrl;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    // 延迟释放，确保浏览器开始下载
+    setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
+  } catch {
+    // CORS失败：直接用a标签下载（同源可下载，跨域会导航到图片）
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+};
+
 type RefImg = { url: string; preview: string; width: number; height: number };
 type Task = {
   id: number; status: 'pending' | 'complete'; result: string[] | null; prompt: string;
@@ -84,6 +124,7 @@ const [history, setHistory] = useState<Array<{time: number, images: string[], pr
 const [tasks, setTasks] = useState<Task[]>(initialTaskState.tasks);
 const [activeTaskId, setActiveTaskId] = useState<number | null>(initialTaskState.activeTaskId);
 const [nextTaskId, setNextTaskId] = useState<number>(initialTaskState.nextTaskId);
+const [downloading, setDownloading] = useState(false);
 const mountedRef = useRef(true);
 const referenceImagesRef = useRef(referenceImages);
 const activeTaskRef = useRef<Task | null>(null);
@@ -168,10 +209,27 @@ const getResolutionByAspect = (currentModel: string, ratio: string, refImgs: {wi
 };
 
 const handleSingleDownload = async (url: string, index: number) => {
-  try { const r = await fetch(url); const b = await r.blob(); const o = URL.createObjectURL(b); const l = document.createElement('a'); l.href = o; l.download = `img-${Date.now()}-${index+1}.png`; document.body.appendChild(l); l.click(); document.body.removeChild(l); URL.revokeObjectURL(o); }
-  catch { window.open(url, '_blank'); }
+  try {
+    await downloadImage(url, `ai-${Date.now()}-${index+1}.${getExtFromUrl(url)}`);
+  } catch (e: any) {
+    alert('下载失败: ' + (e.message || e));
+  }
 };
-const handleBatchDownload = async (urls: string[]) => { for (let i=0;i<urls.length;i++){ await handleSingleDownload(urls[i],i); await new Promise(r=>setTimeout(r,300)); } };
+
+const handleBatchDownload = async (urls: string[]) => {
+  if (downloading) return;
+  setDownloading(true);
+  try {
+    for (let i = 0; i < urls.length; i++) {
+      await downloadImage(urls[i], `ai-${Date.now()}-${i+1}.${getExtFromUrl(urls[i])}`);
+      if (i < urls.length - 1) await new Promise(r => setTimeout(r, 500));
+    }
+  } catch (e: any) {
+    alert('部分下载失败: ' + (e.message || e));
+  } finally {
+    setDownloading(false);
+  }
+};
 
 const handleReferenceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
   const files = e.target.files; if (!files) return;
@@ -325,7 +383,9 @@ return (
 </div></div>))}
 </div>
 <div className="absolute bottom-4 right-4">
-<button onClick={()=>handleBatchDownload(activeTask.result!)} className="bg-yellow-500 text-white px-4 py-2 rounded-xl hover:bg-yellow-600 flex items-center gap-2 shadow-sm">批量下载</button>
+<button onClick={()=>handleBatchDownload(activeTask.result!)} disabled={downloading} className="bg-yellow-500 text-white px-4 py-2 rounded-xl hover:bg-yellow-600 flex items-center gap-2 shadow-sm disabled:opacity-50">
+{downloading?'下载中...':'批量下载'}
+</button>
 </div></>
 ):(<div className="text-gray-500"><div className="flex flex-col items-center"><div className="w-12 h-12 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin mb-4"></div><p>生成中...</p></div></div>)}
 </>):(
@@ -368,7 +428,7 @@ return (
 <div className="space-y-4">
 {history.map((record,ri)=>(<div key={record.time} className="border border-gray-100 rounded-xl p-4">
 <div className="flex justify-between items-center mb-3"><div><p className="text-sm text-gray-500">{new Date(record.time).toLocaleTimeString()}</p><p className="text-sm text-gray-700 truncate max-w-md">提示词：{record.prompt}</p></div>
-<button onClick={()=>handleBatchDownload(record.images)} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200 text-sm">下载该组全部</button></div>
+<button onClick={()=>handleBatchDownload(record.images)} disabled={downloading} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200 text-sm disabled:opacity-50">{downloading?'下载中...':'下载该组全部'}</button></div>
 <div className="flex gap-3 flex-wrap">
 {record.images.map((u,ii)=>(<div key={ii} className="relative group w-24 h-24"><img src={u} alt="" className="w-full h-full object-cover rounded-lg"/>
 <button onClick={()=>handleSingleDownload(u,ii)} className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 rounded-lg">下载</button></div>))}
