@@ -19,7 +19,6 @@ const uploadToScdn = async (file: File): Promise<string> => {
   return data.url;
 };
 
-// 调用生图API：先读text再parse，空响应自动重试
 const callImageApi = async (body: any, retries = 2): Promise<any> => {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -30,28 +29,36 @@ const callImageApi = async (body: any, retries = 2): Promise<any> => {
       });
       const text = await resp.text();
       if (!text || text.trim() === '') {
-        console.warn(`[生图] 第${attempt+1}次响应为空, status=${resp.status}`);
         if (attempt < retries) { await new Promise(r => setTimeout(r, 5000)); continue; }
         throw new Error(`服务器返回空响应(HTTP ${resp.status})，请重试`);
       }
       try { return JSON.parse(text); }
       catch (e) {
-        console.warn(`[生图] 第${attempt+1}次JSON解析失败:`, text.substring(0, 200));
         if (attempt < retries) { await new Promise(r => setTimeout(r, 5000)); continue; }
         throw new Error(`服务器响应格式异常: ${text.substring(0, 100)}`);
       }
     } catch (e: any) {
       if (e.message && e.message.startsWith('服务器')) throw e;
-      if (attempt < retries) { console.warn(`[生图] 第${attempt+1}次请求异常:`, e.message); await new Promise(r => setTimeout(r, 5000)); continue; }
+      if (attempt < retries) { await new Promise(r => setTimeout(r, 5000)); continue; }
       throw e;
     }
   }
   throw new Error('请求失败');
 };
 
+type RefImg = { url: string; preview: string; width: number; height: number };
 type Task = {
   id: number; status: 'pending' | 'complete'; result: string[] | null; prompt: string;
   params?: { userId: string; provider: string; model: string; resolution: string; aspectRatio: string; count: number; referenceImages: {url: string, width: number, height: number}[] };
+};
+
+const loadRefImagesFromStorage = (): RefImg[] => {
+  try {
+    const raw = localStorage.getItem('psRefImages');
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.slice(0, 5) : [];
+  } catch { return []; }
 };
 
 export default function ImagePage() {
@@ -70,7 +77,7 @@ const [model, setModel] = useState<string>('');
 const [resolution, setResolution] = useState<string>('1024x1024');
 const [aspectRatio, setAspectRatio] = useState<string>('auto');
 const [count, setCount] = useState(1);
-const [referenceImages, setReferenceImages] = useState<{file: File, preview: string, url: string, width: number, height: number}[]>([]);
+const [referenceImages, setReferenceImages] = useState<RefImg[]>([]);
 const [uploading, setUploading] = useState(false);
 const [history, setHistory] = useState<Array<{time: number, images: string[], prompt: string}>>([]);
 const [tasks, setTasks] = useState<Task[]>(initialTaskState.tasks);
@@ -83,10 +90,18 @@ const activeTaskRef = useRef<Task | null>(null);
 useEffect(() => { referenceImagesRef.current = referenceImages; }, [referenceImages]);
 useEffect(() => { activeTaskRef.current = tasks.find(t => t.id === activeTaskId) || null; }, [tasks, activeTaskId]);
 
-useEffect(() => { initPSPluginBridge(); setIsPSPlugin(isInPhotoshopPlugin()); }, []);
-
-// PS插件：从URL参数读取参考图
+// 初始化：从localStorage加载历史参考图 + 读取URL参数
 useEffect(() => {
+  initPSPluginBridge();
+  setIsPSPlugin(isInPhotoshopPlugin());
+
+  // 加载localStorage里的历史参考图
+  const stored = loadRefImagesFromStorage();
+  if (stored.length > 0) {
+    setReferenceImages(stored);
+  }
+
+  // 读取URL参数中的ps_ref
   const url = new URL(window.location.href);
   let psRef = url.searchParams.get('ps_ref');
   let psW = url.searchParams.get('ps_w');
@@ -98,27 +113,30 @@ useEffect(() => {
   if (psRef) {
     const w = parseInt(psW || '0'); const h = parseInt(psH || '0');
     setReferenceImages(prev => {
-      if (prev.length >= 5) return prev;
-      return [...prev, { file: new File([], 'PS.png', { type: 'image/png' }), preview: psRef!, url: psRef!, width: w, height: h }];
+      // 避免重复添加同一个URL
+      if (prev.some(p => p.url === psRef)) return prev;
+      const next = [...prev, { url: psRef!, preview: psRef!, width: w, height: h }].slice(0, 5);
+      localStorage.setItem('psRefImages', JSON.stringify(next));
+      return next;
     });
+    // 清除URL参数，避免刷新重复添加
     window.history.replaceState(null, '', '/image');
   }
 }, []);
 
+// 参考图变化时同步到localStorage
 useEffect(() => {
-  const unregisterRef = registerPSRequestHandler('receiveReferenceImage', async (args: any[]) => {
-    const [b64, w, h] = args;
-    if (!b64) throw new Error('no data');
-    const r = await fetch(b64); const b = await r.blob();
-    const f = new File([b], `ps-${Date.now()}.png`, { type: 'image/png' });
-    const url = await uploadToScdn(f);
-    setReferenceImages(prev => [...prev, { file: f, preview: b64, url, width: w||0, height: h||0 }]);
-    return { success: true };
-  });
+  localStorage.setItem('psRefImages', JSON.stringify(referenceImages));
+}, [referenceImages]);
+
+useEffect(() => {
   const unregisterUrl = registerPSRequestHandler('receiveReferenceImageUrl', async (args: any[]) => {
     const [u, w, h] = args;
     if (!u) throw new Error('no url');
-    setReferenceImages(prev => [...prev, { file: new File([], 'ps.png', {type:'image/png'}), preview: u, url: u, width: w||0, height: h||0 }]);
+    setReferenceImages(prev => {
+      if (prev.some(p => p.url === u)) return prev;
+      return [...prev, { url: u, preview: u, width: w||0, height: h||0 }].slice(0, 5);
+    });
     return { success: true };
   });
   const unregisterGet = registerPSRequestHandler('getCurrentGeneratedImage', async () => {
@@ -126,7 +144,7 @@ useEffect(() => {
     if (at && at.result && at.result.length > 0) return { url: at.result[0] };
     return { url: null };
   });
-  return () => { unregisterRef(); unregisterUrl(); unregisterGet(); };
+  return () => { unregisterUrl(); unregisterGet(); };
 }, []);
 
 useEffect(() => { localStorage.setItem('imageTasks', JSON.stringify(tasks)); }, [tasks]);
@@ -172,7 +190,7 @@ const handleReferenceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => 
       const img = new Image(); img.src = preview;
       await new Promise(r => img.onload = r);
       const url = await uploadToScdn(file);
-      setReferenceImages(prev => [...prev, { file, preview, url, width: img.naturalWidth, height: img.naturalHeight }]);
+      setReferenceImages(prev => [...prev, { url, preview, width: img.naturalWidth, height: img.naturalHeight }].slice(0, 5));
     }
   } catch (e: any) { alert(e.message); }
   finally { setUploading(false); }
@@ -180,7 +198,6 @@ const handleReferenceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => 
 };
 
 const handleRemoveReference = (index: number) => {
-  const img = referenceImages[index]; if (img) URL.revokeObjectURL(img.preview);
   setReferenceImages(prev => prev.filter((_, i) => i !== index));
 };
 
@@ -197,7 +214,7 @@ const handleUploadPSLayer = async () => {
       const r = await fetch(result.imageData); const b = await r.blob();
       const f = new File([b], `ps-${result.layerName||'layer'}.png`, { type: 'image/png' });
       const url = await uploadToScdn(f);
-      setReferenceImages(prev => [...prev, { file: f, preview: result.imageData, url, width: result.width, height: result.height }]);
+      setReferenceImages(prev => [...prev, { url, preview: result.imageData, width: result.width, height: result.height }].slice(0, 5));
     }
   } catch (e: any) { alert('上传失败: ' + (e.message||e)); }
   finally { setCapturingLayer(false); }
@@ -243,7 +260,6 @@ const handleSubmit = async (e: any) => {
       const body: any = { userId, model: fm, prompt, size: fs, aspectRatio: far, n: count };
       if (referenceImages.length > 0) body.image = referenceImages.map(i => i.url);
       if ((provider==='gpt-image-2'||provider==='gpt-image-2-stable') && aspectRatio==='auto' && referenceImages.length>0) body.useReferenceSize = true;
-      console.log('[生图] 请求参数:', { model: fm, size: fs, aspectRatio: far, refCount: referenceImages.length });
       const data = await callImageApi(body);
       if (data.error) { alert(data.error); if (mountedRef.current) setTasks(prev => prev.filter(t=>t.id!==taskId)); return; }
       if (mountedRef.current) setTasks(prev => prev.map(t => t.id===taskId ? {...t, status:'complete', result: data.imageUrls} : t));
@@ -279,7 +295,7 @@ return (
 <select value={model} onChange={e=>setModel(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent">
 {availableModels.map(m=>(<option key={m} value={m}>{m}</option>))}
 </select></div>
-{IMAGE_MODELS[provider]?.note && (<div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2"><p className="text-xs text-blue-700">{IMAGE_MODELS[provider].note}</p></div>)}
+{IMAGE_MODELS[provider]?.note && (<div className="bg-blue-50 border-blue-200 rounded-lg px-3 py-2"><p className="text-xs text-blue-700">{IMAGE_MODELS[provider].note}</p></div>)}
 <div><label className="block text-xs font-medium text-gray-500 mb-2">绘图比例</label>
 <select value={aspectRatio} onChange={e=>setAspectRatio(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent">
 <option value="auto">默认自动</option><option value="1:1">1:1</option><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="4:3">4:3</option><option value="3:4">3:4</option><option value="3:2">3:2</option><option value="2:3">2:3</option><option value="5:4">5:4</option><option value="4:5">4:5</option><option value="21:9">21:9</option><option value="9:21">9:21</option>
@@ -345,7 +361,7 @@ return (
 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 sticky top-8">
 <h3 className="text-sm font-semibold text-gray-700 mb-4">一键预设</h3>
 <div className="space-y-3">
-{IMAGE_PRESETS.map(preset=>(<button key={preset.name} type="button" onClick={()=>handlePresetClick(preset)} disabled={uploading} className="w-full text-left px-3 py-2 bg-yellow-700 rounded-lg text-sm hover:bg-yellow-100 disabled:opacity-50">{preset.name}</button>))}
+{IMAGE_PRESETS.map(preset=>(<button key={preset.name} type="button" onClick={()=>handlePresetClick(preset)} disabled={uploading} className="w-full text-left px-3 py-2 bg-yellow-50 text-yellow-700 rounded-lg text-sm hover:bg-yellow-100 disabled:opacity-50">{preset.name}</button>))}
 </div><p className="text-xs text-gray-500 mt-4">提示：使用一键功能前，请先上传您的照片</p>
 </div></div>
 </div>
