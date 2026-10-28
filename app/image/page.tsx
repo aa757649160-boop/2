@@ -86,14 +86,10 @@ useEffect(() => {
   activeTaskRef.current = tasks.find(t => t.id === activeTaskId) || null;
 }, [tasks, activeTaskId]);
 
-// 检测PS插件环境并初始化消息桥（必须在注册处理器之前）
+// 无条件初始化消息桥（不依赖环境检测，因为uxpHost可能未注入）
 useEffect(() => {
-  const inPS = isInPhotoshopPlugin();
-  setIsPSPlugin(inPS);
-  if (inPS) {
-    initPSPluginBridge();
-    console.log('[云卷AI网页] PS插件通信桥已初始化');
-  }
+  initPSPluginBridge();
+  setIsPSPlugin(isInPhotoshopPlugin());
 }, []);
 
 // 注册PS插件请求处理器
