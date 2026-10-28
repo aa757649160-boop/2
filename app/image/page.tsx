@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { IMAGE_MODELS, IMAGE_RESOLUTIONS, MODEL_PRICING, IMAGE_PRESETS } from '@/lib/config';
 import { isInPhotoshopPlugin, capturePSLayer, sendToPhotoshop, registerPSRequestHandler, initPSPluginBridge } from '@/lib/psPlugin';
+import Navbar from '@/components/Navbar';
 
 const uploadToScdn = async (file: File): Promise<string> => {
   const formData = new FormData();
@@ -95,13 +96,11 @@ useEffect(() => {
   initPSPluginBridge();
   setIsPSPlugin(isInPhotoshopPlugin());
 
-  // 加载localStorage里的历史参考图
   const stored = loadRefImagesFromStorage();
   if (stored.length > 0) {
     setReferenceImages(stored);
   }
 
-  // 读取URL参数中的ps_ref
   const url = new URL(window.location.href);
   let psRef = url.searchParams.get('ps_ref');
   let psW = url.searchParams.get('ps_w');
@@ -113,18 +112,15 @@ useEffect(() => {
   if (psRef) {
     const w = parseInt(psW || '0'); const h = parseInt(psH || '0');
     setReferenceImages(prev => {
-      // 避免重复添加同一个URL
       if (prev.some(p => p.url === psRef)) return prev;
       const next = [...prev, { url: psRef!, preview: psRef!, width: w, height: h }].slice(0, 5);
       localStorage.setItem('psRefImages', JSON.stringify(next));
       return next;
     });
-    // 清除URL参数，避免刷新重复添加
     window.history.replaceState(null, '', '/image');
   }
 }, []);
 
-// 参考图变化时同步到localStorage
 useEffect(() => {
   localStorage.setItem('psRefImages', JSON.stringify(referenceImages));
 }, [referenceImages]);
@@ -239,6 +235,11 @@ useEffect(() => { if (model) setResolution(getResolutionByAspect(model, aspectRa
 
 const activeTask = tasks.find(t => t.id === activeTaskId) || null;
 
+const handleTabChange = (tab: 'image' | 'video' | 'profile') => {
+  if (tab === 'video') window.location.href = '/video';
+  else if (tab === 'profile') window.location.href = '/profile';
+};
+
 const handleSubmit = async (e: any) => {
   if (e) e.preventDefault();
   if (!prompt.trim() || uploading) return;
@@ -280,6 +281,7 @@ const availableModels = IMAGE_MODELS[provider]?.models || [];
 
 return (
 <div className="min-h-screen bg-white" style={{ backgroundImage:'radial-gradient(#e5e7eb 1px,transparent 1px)', backgroundSize:'20px 20px' }}>
+<Navbar activeTab="image" onTabChange={handleTabChange} />
 <div className="max-w-6xl mx-auto px-4 py-8">
 <div className="text-center mb-8"><h1 className="text-3xl font-bold text-gray-900 mb-2">AI 绘图</h1><p className="text-gray-500">输入提示词，生成精美的图片</p></div>
 <div className="flex flex-col md:flex-row gap-6">
