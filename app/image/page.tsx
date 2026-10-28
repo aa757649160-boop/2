@@ -19,17 +19,42 @@ const uploadToScdn = async (file: File): Promise<string> => {
   return data.url;
 };
 
-// 安全解析API响应：空响应或非JSON时给出友好提示
-const parseApiResponse = async (resp: Response): Promise<any> => {
-  const text = await resp.text();
-  if (!text || text.trim() === '') {
-    throw new Error('服务器响应超时，请稍后重试');
-  }
+// 带超时的fetch：UXP webview默认超时短，显式设120秒
+const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 120000): Promise<Response> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error('服务器响应格式异常，请稍后重试');
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
   }
+};
+
+// 安全解析+空响应重试
+const callImageApi = async (body: any, retries = 2): Promise<any> => {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const resp = await fetchWithTimeout('/api/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const text = await resp.text();
+      if (!text || text.trim() === '') {
+        if (attempt < retries) { await new Promise(r => setTimeout(r, 3000)); continue; }
+        throw new Error('服务器响应超时，请重试');
+      }
+      try { return JSON.parse(text); }
+      catch {
+        if (attempt < retries) { await new Promise(r => setTimeout(r, 3000)); continue; }
+        throw new Error('服务器响应格式异常，请重试');
+      }
+    } catch (e: any) {
+      if (e.name === 'AbortError') throw new Error('请求超时，请重试');
+      throw e;
+    }
+  }
+  throw new Error('请求失败');
 };
 
 type Task = {
@@ -198,33 +223,6 @@ useEffect(() => {
   const sh = localStorage.getItem('imageHistory');
   if (sh) { try { const p = JSON.parse(sh); const td = new Date(); td.setHours(0,0,0,0); const f = p.filter((i:any) => i.time >= td.getTime()); setHistory(f); if (f.length !== p.length) localStorage.setItem('imageHistory', JSON.stringify(f)); } catch(e){} }
   const mc = IMAGE_MODELS['gpt-image-2']; if (mc.models?.length) setModel(mc.models[0]);
-  tasks.forEach(task => {
-    if (task.status === 'pending' && task.params) {
-      (async () => {
-        try {
-          const { userId: tu, provider: tp, model: tm, aspectRatio: ta, count: tc, referenceImages: tr } = task.params!;
-          const fm = `${tp}-${tm}`;
-          let far = ta;
-          if (ta === 'auto' && tr.length > 0) {
-            const ir = tr[0].width / tr[0].height; let bm='1:1'; let md=Infinity;
-            const rs=[{r:1/1,v:'1:1'},{r:16/9,v:'16:9'},{r:9/16,v:'9:16'},{r:4/3,v:'4:3'},{r:3/4,v:'3:4'},{r:3/2,v:'3:2'},{r:2/3,v:'2:3'},{r:5/4,v:'5:4'},{r:4/5,v:'4:5'},{r:21/9,v:'21:9'},{r:9/21,v:'9:21'}];
-            for(const x of rs){const d=Math.abs(ir-x.r);if(d<md){md=d;bm=x.v;}}
-            far=bm;
-          }
-          const fs = getResolutionByAspect(tm, ta, tr, tp);
-          const body: any = { userId: tu, model: fm, prompt: task.prompt, size: fs, aspectRatio: far, n: tc };
-          if (tr.length > 0) body.image = tr.map(i => i.url);
-          if ((tp==='gpt-image-2'||tp==='gpt-image-2-stable') && ta==='auto' && tr.length>0) body.useReferenceSize = true;
-          const resp = await fetch('/api/image', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-          const data = await parseApiResponse(resp);
-          if (data.error) { if (mountedRef.current) setTasks(prev => prev.filter(t=>t.id!==task.id)); return; }
-          if (mountedRef.current) setTasks(prev => prev.map(t => t.id===task.id ? {...t, status:'complete', result: data.imageUrls} : t));
-          const nr = { time: Date.now(), images: data.imageUrls, prompt: task.prompt };
-          setHistory(prev => { const nh=[nr,...prev]; localStorage.setItem('imageHistory',JSON.stringify(nh)); return nh; });
-        } catch { if (mountedRef.current) setTasks(prev => prev.filter(t=>t.id!==task.id)); }
-      })();
-    }
-  });
 }, []);
 
 useEffect(() => { const mc = IMAGE_MODELS[provider]; if (mc.models?.length) setModel(mc.models[0]); }, [provider]);
@@ -253,8 +251,7 @@ const handleSubmit = async (e: any) => {
       const body: any = { userId, model: fm, prompt, size: fs, aspectRatio: far, n: count };
       if (referenceImages.length > 0) body.image = referenceImages.map(i => i.url);
       if ((provider==='gpt-image-2'||provider==='gpt-image-2-stable') && aspectRatio==='auto' && referenceImages.length>0) body.useReferenceSize = true;
-      const resp = await fetch('/api/image', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-      const data = await parseApiResponse(resp);
+      const data = await callImageApi(body);
       if (data.error) { alert(data.error); if (mountedRef.current) setTasks(prev => prev.filter(t=>t.id!==taskId)); return; }
       if (mountedRef.current) setTasks(prev => prev.map(t => t.id===taskId ? {...t, status:'complete', result: data.imageUrls} : t));
       const nr = { time: Date.now(), images: data.imageUrls, prompt };
@@ -346,10 +343,6 @@ return (
 </div>
 <input type="file" accept="image/*" multiple className="hidden" onChange={handleReferenceUpload} disabled={uploading} />
 </label></div>)}
-{isPSPlugin&&referenceImages.length<5&&(
-<button type="button" onClick={handleUploadPSLayer} disabled={capturingLayer||uploading} className="w-full h-12 mb-4 bg-blue-50 text-blue-600 border-2 border-blue-200 rounded-lg hover:bg-blue-100 flex items-center justify-center gap-2 text-sm font-medium disabled:opacity-50">
-{capturingLayer?<>正在捕获PS图层...</>:<>上传PS当前图层</>}
-</button>)}
 <form onSubmit={handleSubmit} className="relative">
 <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="尽量详细的描述您想要的图片" rows={3} className="w-full border border-gray-200 rounded-2xl px-6 py-4 pr-32 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent shadow-sm resize-none" />
 <button type="submit" disabled={!prompt.trim()||uploading} className="absolute right-2 bottom-2 bg-yellow-500 text-white px-6 py-2.5 rounded-xl hover:bg-yellow-600 disabled:opacity-50">生成图片</button>
@@ -359,7 +352,7 @@ return (
 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 sticky top-8">
 <h3 className="text-sm font-semibold text-gray-700 mb-4">一键预设</h3>
 <div className="space-y-3">
-{IMAGE_PRESETS.map(preset=>(<button key={preset.name} type="button" onClick={()=>handlePresetClick(preset)} disabled={uploading} className="w-full text-left px-3 py-2 bg-yellow-50 text-yellow-700 rounded-lg text-sm hover:bg-yellow-100 disabled:opacity-50">{preset.name}</button>))}
+{IMAGE_PRESETS.map(preset=>(<button key={preset.name} type="button" onClick={()=>handlePresetClick(preset)} disabled={uploading} className="w-full text-left px-3 py-2 bg-yellow-700 rounded-lg text-sm hover:bg-yellow-100 disabled:opacity-50">{preset.name}</button>))}
 </div><p className="text-xs text-gray-500 mt-4">提示：使用一键功能前，请先上传您的照片</p>
 </div></div>
 </div>
