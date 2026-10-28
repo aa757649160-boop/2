@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { IMAGE_MODELS, IMAGE_RESOLUTIONS, MODEL_PRICING, IMAGE_PRESETS } from '@/lib/config';
-import { isInPhotoshopPlugin, capturePSLayer, sendToPhotoshop, registerPSRequestHandler } from '@/lib/psPlugin';
+import { isInPhotoshopPlugin, capturePSLayer, sendToPhotoshop, registerPSRequestHandler, initPSPluginBridge } from '@/lib/psPlugin';
 
 // 上传图片到img.scdn.io图床
 const uploadToScdn = async (file: File): Promise<string> => {
@@ -75,7 +75,6 @@ const [activeTaskId, setActiveTaskId] = useState<number | null>(initialTaskState
 const [nextTaskId, setNextTaskId] = useState<number>(initialTaskState.nextTaskId);
 const mountedRef = useRef(true);
 
-// refs for PS plugin request handlers (avoid stale closure)
 const referenceImagesRef = useRef(referenceImages);
 const activeTaskRef = useRef<Task | null>(null);
 
@@ -87,32 +86,33 @@ useEffect(() => {
   activeTaskRef.current = tasks.find(t => t.id === activeTaskId) || null;
 }, [tasks, activeTaskId]);
 
-// 检测是否在PS插件环境中
+// 检测PS插件环境并初始化消息桥（必须在注册处理器之前）
 useEffect(() => {
-  setIsPSPlugin(isInPhotoshopPlugin());
+  const inPS = isInPhotoshopPlugin();
+  setIsPSPlugin(inPS);
+  if (inPS) {
+    initPSPluginBridge();
+    console.log('[云卷AI网页] PS插件通信桥已初始化');
+  }
 }, []);
 
 // 注册PS插件请求处理器
 useEffect(() => {
-  // 处理器1：PS端按钮触发，接收PS画布截图作为参考图
   const unregisterRef = registerPSRequestHandler('receiveReferenceImage', async (args: any[]) => {
+    console.log('[云卷AI网页] 收到PS参考图请求, args长度:', args.length);
     const [base64Data, w, h, docName] = args;
     if (!base64Data) throw new Error('未收到图片数据');
     if (referenceImagesRef.current.length >= 5) throw new Error('参考图已达上限5张');
 
-    // base64 → File
     const res = await fetch(base64Data);
     const blob = await res.blob();
     const file = new File([blob], `ps-canvas-${Date.now()}.png`, { type: 'image/png' });
 
-    // 上传图床
     const url = await uploadToScdn(file);
 
-    // 添加到参考图列表
-    const preview = base64Data;
     setReferenceImages(prev => [...prev, {
       file,
-      preview,
+      preview: base64Data,
       url,
       width: w || 0,
       height: h || 0,
@@ -121,7 +121,6 @@ useEffect(() => {
     return { success: true, count: referenceImagesRef.current.length + 1 };
   });
 
-  // 处理器2：PS端请求当前生成的图片URL
   const unregisterGet = registerPSRequestHandler('getCurrentGeneratedImage', async () => {
     const activeTask = activeTaskRef.current;
     if (activeTask && activeTask.result && activeTask.result.length > 0) {
