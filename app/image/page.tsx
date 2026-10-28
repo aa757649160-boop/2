@@ -19,6 +19,19 @@ const uploadToScdn = async (file: File): Promise<string> => {
   return data.url;
 };
 
+// 安全解析API响应：空响应或非JSON时给出友好提示
+const parseApiResponse = async (resp: Response): Promise<any> => {
+  const text = await resp.text();
+  if (!text || text.trim() === '') {
+    throw new Error('服务器响应超时，请稍后重试');
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error('服务器响应格式异常，请稍后重试');
+  }
+};
+
 type Task = {
   id: number; status: 'pending' | 'complete'; result: string[] | null; prompt: string;
   params?: { userId: string; provider: string; model: string; resolution: string; aspectRatio: string; count: number; referenceImages: {url: string, width: number, height: number}[] };
@@ -203,7 +216,7 @@ useEffect(() => {
           if (tr.length > 0) body.image = tr.map(i => i.url);
           if ((tp==='gpt-image-2'||tp==='gpt-image-2-stable') && ta==='auto' && tr.length>0) body.useReferenceSize = true;
           const resp = await fetch('/api/image', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-          const data = await resp.json();
+          const data = await parseApiResponse(resp);
           if (data.error) { if (mountedRef.current) setTasks(prev => prev.filter(t=>t.id!==task.id)); return; }
           if (mountedRef.current) setTasks(prev => prev.map(t => t.id===task.id ? {...t, status:'complete', result: data.imageUrls} : t));
           const nr = { time: Date.now(), images: data.imageUrls, prompt: task.prompt };
@@ -241,7 +254,7 @@ const handleSubmit = async (e: any) => {
       if (referenceImages.length > 0) body.image = referenceImages.map(i => i.url);
       if ((provider==='gpt-image-2'||provider==='gpt-image-2-stable') && aspectRatio==='auto' && referenceImages.length>0) body.useReferenceSize = true;
       const resp = await fetch('/api/image', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-      const data = await resp.json();
+      const data = await parseApiResponse(resp);
       if (data.error) { alert(data.error); if (mountedRef.current) setTasks(prev => prev.filter(t=>t.id!==taskId)); return; }
       if (mountedRef.current) setTasks(prev => prev.map(t => t.id===taskId ? {...t, status:'complete', result: data.imageUrls} : t));
       const nr = { time: Date.now(), images: data.imageUrls, prompt };
