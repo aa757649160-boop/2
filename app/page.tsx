@@ -1,4 +1,3 @@
-﻿'use client';
 import { useState, useEffect, useRef } from 'react';
 import Navbar from '@/components/Navbar';
 import { IMAGE_MODELS, IMAGE_RESOLUTIONS, MODEL_PRICING, IMAGE_PRESETS, VIDEO_MODELS, RECHARGE_TIERS, PAYMENT_QRCODE } from '@/lib/config';
@@ -122,6 +121,7 @@ export default function HomePage() {
   const [count, setCount] = useState(1);
   const [referenceImages, setReferenceImages] = useState<{file: File, preview: string, url: string, width: number, height: number}[]>([]);
   const [imageUploading, setImageUploading] = useState(false);
+  const [isImageDownloading, setIsImageDownloading] = useState(false);
   const [imageHistory, setImageHistory] = useState<Array<{time: number, images: string[], prompt: string}>>([]);
   
   // 获取今天的日期键（YYYY-MM-DD），用于每日任务编号自动归零
@@ -465,15 +465,11 @@ export default function HomePage() {
       alert('图片地址无效，请重新生成');
       return;
     }
+    const filename = `ai-generated-image-${Date.now()}-${index+1}.png`;
     try {
       const response = await fetch(url);
-      // 检查响应状态：上游可能被 WAF/防盗链拦截返回错误页，
-      // 不检查就直接下载会把 HTML 错误页存成图片文件导致"损坏"
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const blob = await response.blob();
-      // 根据实际内容类型决定扩展名，避免 .png 文件里是 webp 导致打不开
       let ext = 'png';
       if (blob.type === 'image/jpeg' || blob.type === 'image/jpg') ext = 'jpg';
       else if (blob.type === 'image/webp') ext = 'webp';
@@ -481,20 +477,34 @@ export default function HomePage() {
       const objUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = objUrl;
-      link.download = `ai-generated-image-${Date.now()}-${index+1}.${ext}`;
+      link.download = filename.replace('.png', `.${ext}`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      window.URL.revokeObjectURL(objUrl);
+      // 延迟释放，确保浏览器开始下载后再回收
+      setTimeout(() => window.URL.revokeObjectURL(objUrl), 1000);
     } catch (error) {
-      window.open(url, '_blank');
+      // CORS失败：用a标签直接触发下载
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
   };
 
   const handleBatchImageDownload = async (urls: string[]) => {
-    for (let i = 0; i < urls.length; i++) {
-      await handleSingleImageDownload(urls[i], i);
-      await new Promise(resolve => setTimeout(resolve, 300));
+    if (isImageDownloading) return;
+    setIsImageDownloading(true);
+    try {
+      for (let i = 0; i < urls.length; i++) {
+        await handleSingleImageDownload(urls[i], i);
+        if (i < urls.length - 1) await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    } finally {
+      setIsImageDownloading(false);
     }
   };
 
@@ -1143,15 +1153,6 @@ export default function HomePage() {
                               </div>
                             ))}
                           </div>
-                          <button
-                            onClick={() => handleBatchImageDownload(activeImageTask.result!)}
-                            className="absolute bottom-4 right-4 bg-yellow-500 text-white px-4 py-2 rounded-xl hover:bg-yellow-600 flex items-center gap-2 transition-colors shadow-sm"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 00-3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                            批量下载全部
-                          </button>
                         </>
                       ) : (
                         <div className="text-gray-500">
@@ -1173,6 +1174,20 @@ export default function HomePage() {
                     </div>
                   )}
                 </div>
+                {activeImageTask?.result && activeImageTask.result.length > 0 && (
+                  <div className="flex justify-end mb-4">
+                    <button
+                      onClick={() => handleBatchImageDownload(activeImageTask.result!)}
+                      disabled={isImageDownloading}
+                      className="bg-yellow-500 text-white px-4 py-2 rounded-xl hover:bg-yellow-600 flex items-center gap-2 transition-colors shadow-sm disabled:opacity-50 whitespace-nowrap"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 00-3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      {isImageDownloading ? '下载中...' : '批量下载全部'}
+                    </button>
+                  </div>
+                )}
                 {referenceImages.length > 0 && (
                   <div className="mb-4">
                     <label className="block text-xs font-medium text-gray-500 mb-2">参考图 ({referenceImages.length}/5)</label>
@@ -1272,9 +1287,10 @@ export default function HomePage() {
                         </div>
                         <button
                           onClick={() => handleBatchImageDownload(record.images)}
-                          className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200 text-sm"
+                          disabled={isImageDownloading}
+                          className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200 text-sm disabled:opacity-50 whitespace-nowrap"
                         >
-                          下载该组全部
+                          {isImageDownloading ? '下载中...' : '下载该组全部'}
                         </button>
                       </div>
                       <div className="flex gap-3 flex-wrap">
