@@ -8,12 +8,9 @@ const uploadToScdn = async (file: File): Promise<string> => {
   formData.append('image', file);
   formData.append('cdn_domain', 'cloudflareimg.cdn.sn');
   formData.append('outputFormat', 'auto');
-  const response = await fetch('https://img.scdn.io/api/v1.php', {
-    method: 'POST',
-    body: formData,
-  });
+  const response = await fetch('https://img.scdn.io/api/v1.php', { method: 'POST', body: formData });
   if (!response.ok) {
-    let errorMsg = '上传失败，请稍后再试';
+    let errorMsg = '上传失败';
     try { const ed = await response.json(); if (ed.message) errorMsg = ed.message; } catch (e) {}
     throw new Error(`上传图床失败: ${errorMsg}`);
   }
@@ -23,19 +20,14 @@ const uploadToScdn = async (file: File): Promise<string> => {
 };
 
 type Task = {
-  id: number;
-  status: 'pending' | 'complete';
-  result: string[] | null;
-  prompt: string;
+  id: number; status: 'pending' | 'complete'; result: string[] | null; prompt: string;
   params?: { userId: string; provider: string; model: string; resolution: string; aspectRatio: string; count: number; referenceImages: {url: string, width: number, height: number}[] };
 };
 
 export default function ImagePage() {
 const loadPersistedTasks = () => {
   try {
-    const t = localStorage.getItem('imageTasks');
-    const n = localStorage.getItem('imageNextTaskId');
-    const a = localStorage.getItem('imageActiveTaskId');
+    const t = localStorage.getItem('imageTasks'); const n = localStorage.getItem('imageNextTaskId'); const a = localStorage.getItem('imageActiveTaskId');
     return { tasks: t ? JSON.parse(t) : [], nextTaskId: n ? parseInt(n) : 1, activeTaskId: a ? parseInt(a) : null };
   } catch { return { tasks: [], nextTaskId: 1, activeTaskId: null }; }
 };
@@ -61,61 +53,48 @@ const activeTaskRef = useRef<Task | null>(null);
 useEffect(() => { referenceImagesRef.current = referenceImages; }, [referenceImages]);
 useEffect(() => { activeTaskRef.current = tasks.find(t => t.id === activeTaskId) || null; }, [tasks, activeTaskId]);
 
-// 无条件初始化消息桥
-useEffect(() => {
-  initPSPluginBridge();
-  setIsPSPlugin(isInPhotoshopPlugin());
-}, []);
+useEffect(() => { initPSPluginBridge(); setIsPSPlugin(isInPhotoshopPlugin()); }, []);
 
-// 从URL hash读取PS插件传来的参考图（ps_ref=url&ps_w=100&ps_h=200）
+// 从URL读取PS插件传来的参考图（支持query参数和hash）
 useEffect(() => {
-  const hash = window.location.hash;
-  if (!hash || hash.length < 2) return;
-  const params = new URLSearchParams(hash.substring(1));
-  const psRef = params.get('ps_ref');
+  const url = new URL(window.location.href);
+  let psRef = url.searchParams.get('ps_ref');
+  let psW = url.searchParams.get('ps_w');
+  let psH = url.searchParams.get('ps_h');
+  let psName = url.searchParams.get('ps_name');
+  if (!psRef && window.location.hash.length > 1) {
+    const hp = new URLSearchParams(window.location.hash.substring(1));
+    psRef = hp.get('ps_ref'); psW = hp.get('ps_w'); psH = hp.get('ps_h'); psName = hp.get('ps_name');
+  }
   if (psRef) {
-    const w = parseInt(params.get('ps_w') || '0');
-    const h = parseInt(params.get('ps_h') || '0');
-    const name = params.get('ps_name') || 'PS画布';
-    console.log('[云卷AI] 从hash读取到PS参考图:', psRef, w, h, name);
+    const w = parseInt(psW || '0'); const h = parseInt(psH || '0');
     setReferenceImages(prev => {
       if (prev.length >= 5) return prev;
-      return [...prev, {
-        file: new File([], name, { type: 'image/png' }),
-        preview: psRef,
-        url: psRef,
-        width: w, height: h,
-      }];
+      return [...prev, { file: new File([], psName || 'PS.png', { type: 'image/png' }), preview: psRef!, url: psRef!, width: w, height: h }];
     });
-    // 清理hash，避免刷新重复添加
-    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    window.history.replaceState(null, '', '/image');
   }
 }, []);
 
-// 注册PS插件请求处理器
 useEffect(() => {
   const unregisterRef = registerPSRequestHandler('receiveReferenceImage', async (args: any[]) => {
-    const [base64Data, w, h] = args;
-    if (!base64Data) throw new Error('未收到图片数据');
-    const res = await fetch(base64Data);
-    const blob = await res.blob();
-    const file = new File([blob], `ps-canvas-${Date.now()}.png`, { type: 'image/png' });
-    const url = await uploadToScdn(file);
-    setReferenceImages(prev => [...prev, { file, preview: base64Data, url, width: w || 0, height: h || 0 }]);
+    const [b64, w, h] = args;
+    if (!b64) throw new Error('no data');
+    const r = await fetch(b64); const b = await r.blob();
+    const f = new File([b], `ps-${Date.now()}.png`, { type: 'image/png' });
+    const url = await uploadToScdn(f);
+    setReferenceImages(prev => [...prev, { file: f, preview: b64, url, width: w||0, height: h||0 }]);
     return { success: true };
   });
   const unregisterUrl = registerPSRequestHandler('receiveReferenceImageUrl', async (args: any[]) => {
-    const [imageUrl, w, h] = args;
-    if (!imageUrl) throw new Error('未收到图片URL');
-    setReferenceImages(prev => [...prev, {
-      file: new File([], 'ps-canvas.png', { type: 'image/png' }),
-      preview: imageUrl, url: imageUrl, width: w || 0, height: h || 0,
-    }]);
+    const [u, w, h] = args;
+    if (!u) throw new Error('no url');
+    setReferenceImages(prev => [...prev, { file: new File([], 'ps.png', {type:'image/png'}), preview: u, url: u, width: w||0, height: h||0 }]);
     return { success: true };
   });
   const unregisterGet = registerPSRequestHandler('getCurrentGeneratedImage', async () => {
-    const activeTask = activeTaskRef.current;
-    if (activeTask && activeTask.result && activeTask.result.length > 0) return { url: activeTask.result[0] };
+    const at = activeTaskRef.current;
+    if (at && at.result && at.result.length > 0) return { url: at.result[0] };
     return { url: null };
   });
   return () => { unregisterRef(); unregisterUrl(); unregisterGet(); };
@@ -126,118 +105,63 @@ useEffect(() => { localStorage.setItem('imageNextTaskId', nextTaskId.toString())
 useEffect(() => { if (activeTaskId !== null) localStorage.setItem('imageActiveTaskId', activeTaskId.toString()); else localStorage.removeItem('imageActiveTaskId'); }, [activeTaskId]);
 useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
-const calculateReferenceImageSize = (width: number, height: number, maxSide = 3840) => {
-  let tw = width, th = height;
-  const max = Math.max(width, height);
-  if (max > maxSide) { const s = maxSide / max; tw = Math.floor(width*s); th = Math.floor(height*s); }
-  const a16 = (v: number) => Math.ceil(v/16)*16;
-  tw = a16(tw); th = a16(th);
-  const fm = Math.max(tw, th);
-  if (fm > maxSide) { const s = maxSide/fm; tw = a16(Math.floor(tw*s)); th = a16(Math.floor(th*s)); }
+const calcSize = (width: number, height: number, maxSide = 3840) => {
+  let tw = width, th = height; const mx = Math.max(width, height);
+  if (mx > maxSide) { const s = maxSide/mx; tw = Math.floor(width*s); th = Math.floor(height*s); }
+  const a16 = (v:number) => Math.ceil(v/16)*16; tw = a16(tw); th = a16(th);
+  const fm = Math.max(tw, th); if (fm > maxSide) { const s = maxSide/fm; tw = a16(Math.floor(tw*s)); th = a16(Math.floor(th*s)); }
   return { width: tw, height: th };
 };
-
-const getResolutionByAspect = (currentModel: string, ratio: string, refImgs: {width: number, height: number}[], currentProvider?: string) => {
+const getRes = (cm: string, ratio: string, refs: {width:number;height:number}[], cp?: string) => {
   if (ratio === 'auto') {
-    if ((currentProvider === 'gpt-image-2' || currentProvider === 'gpt-image-2-stable') && refImgs.length > 0) return `${refImgs[0].width}x${refImgs[0].height}`;
-    if (refImgs.length > 0) { const { width, height } = calculateReferenceImageSize(refImgs[0].width, refImgs[0].height, 3840); return `${width}x${height}`; }
-    const r = IMAGE_RESOLUTIONS[currentModel] || []; return r[0] || '1024x1024';
+    if ((cp==='gpt-image-2'||cp==='gpt-image-2-stable') && refs.length>0) return `${refs[0].width}x${refs[0].height}`;
+    if (refs.length>0) { const {width,height} = calcSize(refs[0].width, refs[0].height); return `${width}x${height}`; }
+    const r = IMAGE_RESOLUTIONS[cm]||[]; return r[0]||'1024x1024';
   }
-  const r = IMAGE_RESOLUTIONS[currentModel] || [];
-  const M: Record<string, number> = { '1:1':0,'16:9':1,'9:16':2,'4:3':3,'3:4':4,'3:2':5,'2:3':6,'5:4':7,'4:5':8,'21:9':9,'9:21':10 };
-  const i = M[ratio]; if (i !== undefined && r[i]) return r[i]; return r[0] || '1024x1024';
+  const r = IMAGE_RESOLUTIONS[cm]||[];
+  const M: Record<string,number> = {'1:1':0,'16:9':1,'9:16':2,'4:3':3,'3:4':4,'3:2':5,'2:3':6,'5:4':7,'4:5':8,'21:9':9,'9:21':10};
+  const i = M[ratio]; return (i!==undefined && r[i]) ? r[i] : (r[0]||'1024x1024');
 };
 
-const handleSingleDownload = async (url: string, index: number) => {
-  try { const r = await fetch(url); const b = await r.blob(); const o = URL.createObjectURL(b); const l = document.createElement('a'); l.href = o; l.download = `img-${Date.now()}-${index+1}.png`; document.body.appendChild(l); l.click(); document.body.removeChild(l); URL.revokeObjectURL(o); }
-  catch { window.open(url, '_blank'); }
+const dl = async (url: string, idx: number) => {
+  try { const r = await fetch(url); const b = await r.blob(); const o = URL.createObjectURL(b); const l = document.createElement('a'); l.href=o; l.download=`img-${Date.now()}-${idx}.png`; document.body.appendChild(l); l.click(); document.body.removeChild(l); URL.revokeObjectURL(o); }
+  catch { window.open(url,'_blank'); }
 };
-const handleBatchDownload = async (urls: string[]) => { for (let i=0;i<urls.length;i++){ await handleSingleDownload(urls[i],i); await new Promise(r=>setTimeout(r,300)); } };
 
 const handleReferenceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
   const files = e.target.files; if (!files) return;
   const nf = Array.from(files).slice(0, 5 - referenceImages.length);
   setUploading(true);
   try {
-    for (const file of nf) {
-      const preview = URL.createObjectURL(file);
-      const img = new Image(); img.src = preview;
+    for (const f of nf) {
+      const preview = URL.createObjectURL(f); const img = new Image(); img.src = preview;
       await new Promise(r => img.onload = r);
-      const url = await uploadToScdn(file);
-      setReferenceImages(prev => [...prev, { file, preview, url, width: img.naturalWidth, height: img.naturalHeight }]);
+      const url = await uploadToScdn(f);
+      setReferenceImages(prev => [...prev, { file: f, preview, url, width: img.naturalWidth, height: img.naturalHeight }]);
     }
-  } catch (e: any) { alert(e.message); }
-  finally { setUploading(false); }
+  } catch (e: any) { alert(e.message); } finally { setUploading(false); }
   e.target.value = '';
-};
-
-const handleRemoveReference = (index: number) => {
-  const img = referenceImages[index]; if (img) URL.revokeObjectURL(img.preview);
-  setReferenceImages(prev => prev.filter((_, i) => i !== index));
 };
 
 const [isPSPlugin, setIsPSPlugin] = useState(false);
 const [capturingLayer, setCapturingLayer] = useState(false);
-const [sendingToPS, setSendingToPS] = useState<string | null>(null);
-
-const handleUploadPSLayer = async () => {
-  if (referenceImages.length >= 5) { alert('最多5张'); return; }
-  setCapturingLayer(true);
-  try {
-    const result = await capturePSLayer();
-    if (result.success && result.imageData) {
-      const r = await fetch(result.imageData); const b = await r.blob();
-      const f = new File([b], `ps-${result.layerName||'layer'}.png`, { type: 'image/png' });
-      const url = await uploadToScdn(f);
-      setReferenceImages(prev => [...prev, { file: f, preview: result.imageData, url, width: result.width, height: result.height }]);
-    }
-  } catch (e: any) { alert('上传失败: ' + (e.message||e)); }
-  finally { setCapturingLayer(false); }
-};
+const [sendingToPS, setSendingToPS] = useState<string|null>(null);
 
 const handleSendToPS = async (imageUrl: string) => {
   setSendingToPS(imageUrl);
   try { const r = await sendToPhotoshop(imageUrl, { asSmartObject: true }); if (r.success) alert('已发送到Photoshop'); }
-  catch (e: any) { alert('发送失败: ' + (e.message||e)); }
-  finally { setSendingToPS(null); }
+  catch (e: any) { alert('发送失败: '+(e.message||e)); } finally { setSendingToPS(null); }
 };
 
 useEffect(() => {
   const su = localStorage.getItem('userId'); if (su) setUserId(su);
   const sh = localStorage.getItem('imageHistory');
-  if (sh) { try { const p = JSON.parse(sh); const td = new Date(); td.setHours(0,0,0,0); const f = p.filter((i:any) => i.time >= td.getTime()); setHistory(f); if (f.length !== p.length) localStorage.setItem('imageHistory', JSON.stringify(f)); } catch(e){} }
+  if (sh) { try { const p = JSON.parse(sh); const td = new Date(); td.setHours(0,0,0,0); const f = p.filter((i:any)=>i.time>=td.getTime()); setHistory(f); if (f.length!==p.length) localStorage.setItem('imageHistory',JSON.stringify(f)); } catch(e){} }
   const mc = IMAGE_MODELS['gpt-image-2']; if (mc.models?.length) setModel(mc.models[0]);
-  tasks.forEach(task => {
-    if (task.status === 'pending' && task.params) {
-      (async () => {
-        try {
-          const { userId: tu, provider: tp, model: tm, aspectRatio: ta, count: tc, referenceImages: tr } = task.params!;
-          const fm = `${tp}-${tm}`;
-          let far = ta;
-          if (ta === 'auto' && tr.length > 0) {
-            const ir = tr[0].width / tr[0].height; let bm='1:1'; let md=Infinity;
-            const rs=[{r:1/1,v:'1:1'},{r:16/9,v:'16:9'},{r:9/16,v:'9:16'},{r:4/3,v:'4:3'},{r:3/4,v:'3:4'},{r:3/2,v:'3:2'},{r:2/3,v:'2:3'},{r:5/4,v:'5:4'},{r:4/5,v:'4:5'},{r:21/9,v:'21:9'},{r:9/21,v:'9:21'}];
-            for(const x of rs){const d=Math.abs(ir-x.r);if(d<md){md=d;bm=x.v;}}
-            far=bm;
-          }
-          const fs = getResolutionByAspect(tm, ta, tr, tp);
-          const body: any = { userId: tu, model: fm, prompt: task.prompt, size: fs, aspectRatio: far, n: tc };
-          if (tr.length > 0) body.image = tr.map(i => i.url);
-          if ((tp==='gpt-image-2'||tp==='gpt-image-2-stable') && ta==='auto' && tr.length>0) body.useReferenceSize = true;
-          const resp = await fetch('/api/image', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-          const data = await resp.json();
-          if (data.error) { if (mountedRef.current) setTasks(prev => prev.filter(t=>t.id!==task.id)); return; }
-          if (mountedRef.current) setTasks(prev => prev.map(t => t.id===task.id ? {...t, status:'complete', result: data.imageUrls} : t));
-          const nr = { time: Date.now(), images: data.imageUrls, prompt: task.prompt };
-          setHistory(prev => { const nh=[nr,...prev]; localStorage.setItem('imageHistory',JSON.stringify(nh)); return nh; });
-        } catch { if (mountedRef.current) setTasks(prev => prev.filter(t=>t.id!==task.id)); }
-      })();
-    }
-  });
 }, []);
 
 useEffect(() => { const mc = IMAGE_MODELS[provider]; if (mc.models?.length) setModel(mc.models[0]); }, [provider]);
-useEffect(() => { if (model) setResolution(getResolutionByAspect(model, aspectRatio, referenceImages, provider)); }, [model, aspectRatio, referenceImages, provider]);
+useEffect(() => { if (model) setResolution(getRes(model, aspectRatio, referenceImages, provider)); }, [model, aspectRatio, referenceImages, provider]);
 
 const activeTask = tasks.find(t => t.id === activeTaskId) || null;
 
@@ -246,29 +170,26 @@ const handleSubmit = async (e: any) => {
   if (!prompt.trim() || uploading) return;
   const taskId = nextTaskId;
   setTasks(prev => [...prev, { id: taskId, status: 'pending', result: null, prompt, params: { userId, provider, model, resolution, aspectRatio, count, referenceImages: referenceImages.map(i=>({url:i.url,width:i.width,height:i.height})) } }]);
-  setNextTaskId(prev => prev + 1);
-  setActiveTaskId(taskId);
+  setNextTaskId(prev => prev + 1); setActiveTaskId(taskId);
   (async () => {
     try {
-      const fm = `${provider}-${model}`;
-      let far = aspectRatio;
+      const fm = `${provider}-${model}`; let far = aspectRatio;
       if (aspectRatio === 'auto' && referenceImages.length > 0) {
-        const ir = referenceImages[0].width / referenceImages[0].height; let bm='1:1'; let md=Infinity;
+        const ir = referenceImages[0].width/referenceImages[0].height; let bm='1:1'; let md=Infinity;
         const rs=[{r:1/1,v:'1:1'},{r:16/9,v:'16:9'},{r:9/16,v:'9:16'},{r:4/3,v:'4:3'},{r:3/4,v:'3:4'},{r:3/2,v:'3:2'},{r:2/3,v:'2:3'},{r:5/4,v:'5:4'},{r:4/5,v:'4:5'},{r:21/9,v:'21:9'},{r:9/21,v:'9:21'}];
-        for(const x of rs){const d=Math.abs(ir-x.r);if(d<md){md=d;bm=x.v;}}
-        far=bm;
+        for(const x of rs){const d=Math.abs(ir-x.r);if(d<md){md=d;bm=x.v;}} far=bm;
       }
-      const fs = getResolutionByAspect(model, aspectRatio, referenceImages, provider);
+      const fs = getRes(model, aspectRatio, referenceImages, provider);
       const body: any = { userId, model: fm, prompt, size: fs, aspectRatio: far, n: count };
-      if (referenceImages.length > 0) body.image = referenceImages.map(i => i.url);
+      if (referenceImages.length>0) body.image = referenceImages.map(i=>i.url);
       if ((provider==='gpt-image-2'||provider==='gpt-image-2-stable') && aspectRatio==='auto' && referenceImages.length>0) body.useReferenceSize = true;
       const resp = await fetch('/api/image', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
       const data = await resp.json();
-      if (data.error) { alert(data.error); if (mountedRef.current) setTasks(prev => prev.filter(t=>t.id!==taskId)); return; }
-      if (mountedRef.current) setTasks(prev => prev.map(t => t.id===taskId ? {...t, status:'complete', result: data.imageUrls} : t));
+      if (data.error) { alert(data.error); if (mountedRef.current) setTasks(prev=>prev.filter(t=>t.id!==taskId)); return; }
+      if (mountedRef.current) setTasks(prev=>prev.map(t=>t.id===taskId?{...t,status:'complete',result:data.imageUrls}:t));
       const nr = { time: Date.now(), images: data.imageUrls, prompt };
-      setHistory(prev => { const nh=[nr,...prev]; localStorage.setItem('imageHistory',JSON.stringify(nh)); return nh; });
-    } catch (e: any) { alert(e.message); if (mountedRef.current) setTasks(prev => prev.filter(t=>t.id!==taskId)); }
+      setHistory(prev=>{const nh=[nr,...prev];localStorage.setItem('imageHistory',JSON.stringify(nh));return nh;});
+    } catch(e:any) { alert(e.message); if(mountedRef.current) setTasks(prev=>prev.filter(t=>t.id!==taskId)); }
   })();
 };
 
@@ -277,8 +198,7 @@ const handlePresetClick = async (preset: typeof IMAGE_PRESETS[0]) => {
   setPrompt(preset.prompt); await handleSubmit(null);
 };
 
-const fullModel = `${provider}-${model}`;
-const currentPricing = MODEL_PRICING[fullModel];
+const currentPricing = MODEL_PRICING[`${provider}-${model}`];
 const availableModels = IMAGE_MODELS[provider]?.models || [];
 
 return (
@@ -292,7 +212,7 @@ return (
 <div className="space-y-4">
 <div><label className="block text-xs font-medium text-gray-500 mb-2">模型厂商</label>
 <select value={provider} onChange={e=>setProvider(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent">
-{Object.keys(IMAGE_MODELS).map(p=>(<option key={p} value={p}>{p==='gpt-image-2-stable'?'gpt-image-2（稳定接口）':p==='nano-banana-2-stable'?'nano-banana-2（稳定接口）':p}</option>))}
+{Object.keys(IMAGE_MODELS).map(p=>(<option key={p} value={p}>{p==='gpt-image-2-stable'?'gpt-image-2（稳定）':p==='nano-banana-2-stable'?'nano-banana-2（稳定）':p}</option>))}
 </select></div>
 <div><label className="block text-xs font-medium text-gray-500 mb-2">模型</label>
 <select value={model} onChange={e=>setModel(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent">
@@ -325,12 +245,12 @@ return (
 {activeTask.result.map((url,index)=>(<div key={index} className="relative group">
 <img src={url} alt={`Generated ${index+1}`} className="w-full h-auto object-contain rounded-lg" />
 <div className="absolute bottom-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-<button onClick={()=>handleSingleDownload(url,index)} className="bg-yellow-500 text-white px-3 py-1 rounded-lg hover:bg-yellow-600 text-sm">下载</button>
+<button onClick={()=>dl(url,index)} className="bg-yellow-500 text-white px-3 py-1 rounded-lg hover:bg-yellow-600 text-sm">下载</button>
 {isPSPlugin&&(<button onClick={()=>handleSendToPS(url)} disabled={sendingToPS===url} className="bg-blue-500 text-white px-3 py-1 rounded-lg hover:bg-blue-600 text-sm disabled:opacity-50">{sendingToPS===url?'发送中...':'发送到PS'}</button>)}
 </div></div>))}
 </div>
 <div className="absolute bottom-4 right-4 flex gap-2">
-<button onClick={()=>handleBatchDownload(activeTask.result!)} className="bg-yellow-500 text-white px-4 py-2 rounded-xl hover:bg-yellow-600 flex items-center gap-2 shadow-sm">批量下载</button>
+<button onClick={()=>{activeTask.result!.forEach((u,i)=>dl(u,i));}} className="bg-yellow-500 text-white px-4 py-2 rounded-xl hover:bg-yellow-600 flex items-center gap-2 shadow-sm">批量下载</button>
 {isPSPlugin&&(<button onClick={()=>{if(activeTask.result)activeTask.result.forEach((u,i)=>setTimeout(()=>handleSendToPS(u),i*500));}} disabled={!!sendingToPS} className="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600 flex items-center gap-2 shadow-sm disabled:opacity-50">全部发送到PS</button>)}
 </div></>
 ):(<div className="text-gray-500"><div className="flex flex-col items-center"><div className="w-12 h-12 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin mb-4"></div><p>生成中...</p></div></div>)}
@@ -343,7 +263,7 @@ return (
 <div className="mb-4"><label className="block text-xs font-medium text-gray-500 mb-2">参考图 ({referenceImages.length}/5)</label><div className="flex gap-3 flex-wrap">
 {referenceImages.map((img,index)=>(<div key={index} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200">
 <img src={img.preview} alt={`参考图${index+1}`} className="w-full h-full object-cover" />
-<button type="button" onClick={()=>handleRemoveReference(index)} className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600">×</button>
+<button type="button" onClick={()=>setReferenceImages(prev=>prev.filter((_,i)=>i!==index))} className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600">×</button>
 <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs text-center py-0.5">图{index+1}</span>
 </div>))}
 </div></div>)}
@@ -355,10 +275,6 @@ return (
 </div>
 <input type="file" accept="image/*" multiple className="hidden" onChange={handleReferenceUpload} disabled={uploading} />
 </label></div>)}
-{isPSPlugin&&referenceImages.length<5&&(
-<button type="button" onClick={handleUploadPSLayer} disabled={capturingLayer||uploading} className="w-full h-12 mb-4 bg-blue-50 text-blue-600 border-2 border-blue-200 rounded-lg hover:bg-blue-100 flex items-center justify-center gap-2 text-sm font-medium disabled:opacity-50">
-{capturingLayer?<>正在捕获PS图层...</>:<>上传PS当前图层</>}
-</button>)}
 <form onSubmit={handleSubmit} className="relative">
 <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="尽量详细的描述您想要的图片" rows={3} className="w-full border border-gray-200 rounded-2xl px-6 py-4 pr-32 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent shadow-sm resize-none" />
 <button type="submit" disabled={!prompt.trim()||uploading} className="absolute right-2 bottom-2 bg-yellow-500 text-white px-6 py-2.5 rounded-xl hover:bg-yellow-600 disabled:opacity-50">生成图片</button>
@@ -378,10 +294,10 @@ return (
 <div className="space-y-4">
 {history.map((record,ri)=>(<div key={record.time} className="border border-gray-100 rounded-xl p-4">
 <div className="flex justify-between items-center mb-3"><div><p className="text-sm text-gray-500">{new Date(record.time).toLocaleTimeString()}</p><p className="text-sm text-gray-700 truncate max-w-md">提示词：{record.prompt}</p></div>
-<button onClick={()=>handleBatchDownload(record.images)} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200 text-sm">下载该组全部</button></div>
+<button onClick={()=>{record.images.forEach((u,i)=>dl(u,i));}} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200 text-sm">下载该组全部</button></div>
 <div className="flex gap-3 flex-wrap">
 {record.images.map((u,ii)=>(<div key={ii} className="relative group w-24 h-24"><img src={u} alt="" className="w-full h-full object-cover rounded-lg"/>
-<button onClick={()=>handleSingleDownload(u,ii)} className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 rounded-lg">下载</button></div>))}
+<button onClick={()=>dl(u,ii)} className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 rounded-lg">下载</button></div>))}
 </div></div>))}
 </div></div>)}
 </div></div>
