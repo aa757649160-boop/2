@@ -43,6 +43,24 @@ const pendingRequests = new Map<number, { resolve: (value: any) => void; reject:
 // 消息监听器是否已初始化
 let listenerInitialized = false;
 
+// PS端主动发来的请求处理器注册表
+// key: method名, value: handler函数
+type PSRequestHandler = (args: any[]) => Promise<any> | any;
+const requestHandlers = new Map<string, PSRequestHandler>();
+
+/**
+ * 注册PS端请求处理器
+ * PS插件端主动调用网页端方法时，通过此注册响应
+ */
+export function registerPSRequestHandler(method: string, handler: PSRequestHandler): () => void {
+  requestHandlers.set(method, handler);
+  return () => {
+    if (requestHandlers.get(method) === handler) {
+      requestHandlers.delete(method);
+    }
+  };
+}
+
 /**
  * 初始化消息监听器
  */
@@ -53,7 +71,7 @@ function ensureListener() {
     const data = event.data;
     if (!data || typeof data !== 'object') return;
     
-    // 处理响应消息
+    // 处理响应消息（网页端 → PS端请求的回复）
     if (data.type === 'response' && data.requestId) {
       const pending = pendingRequests.get(data.requestId);
       if (pending) {
@@ -64,11 +82,30 @@ function ensureListener() {
           pending.resolve(data.result);
         }
       }
+      return;
+    }
+    
+    // 处理PS端主动发来的请求（PS端按钮触发 → 网页端处理）
+    if (data.type === 'request' && data.method) {
+      const handler = requestHandlers.get(data.method);
+      if (handler) {
+        Promise.resolve()
+          .then(() => handler(data.args || []))
+          .then((result) => {
+            replyToPS(event, data.requestId, null, result);
+          })
+          .catch((err) => {
+            replyToPS(event, data.requestId, err.message || String(err), null);
+          });
+      } else {
+        // 没有注册的处理器，回复未知方法
+        replyToPS(event, data.requestId, `未知方法: ${data.method}`, null);
+      }
+      return;
     }
     
     // 处理来自插件的主动消息
     if (data.type === 'event' && data.event) {
-      // 触发自定义事件
       const customEvent = new CustomEvent('ps-plugin-event', {
         detail: data
       });
@@ -77,6 +114,28 @@ function ensureListener() {
   });
   
   listenerInitialized = true;
+}
+
+/**
+ * 回复PS端请求
+ */
+function replyToPS(event: MessageEvent, requestId: number, error: string | null, result: any) {
+  const reply: any = { type: 'response', requestId };
+  if (error) reply.error = error;
+  else reply.result = result;
+  
+  try {
+    // 回复给发送方
+    if (event.source) {
+      (event.source as Window).postMessage(reply, event.origin || '*');
+    } else if (window.uxpHost) {
+      window.uxpHost.postMessage(reply);
+    } else {
+      window.postMessage(reply, '*');
+    }
+  } catch (e) {
+    console.error('[PS插件] 回复消息失败:', e);
+  }
 }
 
 /**
@@ -128,7 +187,7 @@ export function invokePSPlugin(method: string, ...args: any[]): Promise<any> {
         pendingRequests.delete(requestId);
         reject(new Error('请求超时'));
       }
-    }, 60000); // 60秒超时
+    }, 120000); // 120秒超时
   });
 }
 
