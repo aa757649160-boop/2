@@ -1175,6 +1175,17 @@ export default function HomePage() {
                     </div>
                   )}
                 </div>
+                {activeImageTask?.result && activeImageTask.result.length > 0 && (
+                  <div className="flex justify-end mb-4">
+                    <button
+                      onClick={() => handleBatchImageDownload(activeImageTask.result!)}
+                      disabled={isImageDownloading}
+                      className="bg-yellow-500 text-white px-4 py-2 rounded-xl hover:bg-yellow-600 text-sm font-medium transition-colors shadow-sm disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {isImageDownloading ? '下载中...' : '批量下载全部'}
+                    </button>
+                  </div>
+                )}
                 {referenceImages.length > 0 && (
                   <div className="mb-4">
                     <label className="block text-xs font-medium text-gray-500 mb-2">参考图 ({referenceImages.length}/5)</label>
