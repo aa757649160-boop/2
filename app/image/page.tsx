@@ -19,6 +19,14 @@ const uploadToScdn = async (file: File): Promise<string> => {
   return data.url;
 };
 
+// 安全解析JSON：先读text再parse，避免空响应崩溃
+const safeJson = async (resp: Response): Promise<any> => {
+  const text = await resp.text();
+  if (!text || text.trim() === '') throw new Error('服务器返回空响应，请稍后重试');
+  try { return JSON.parse(text); }
+  catch { throw new Error('服务器响应格式错误，请稍后重试'); }
+};
+
 type Task = {
   id: number; status: 'pending' | 'complete'; result: string[] | null; prompt: string;
   params?: { userId: string; provider: string; model: string; resolution: string; aspectRatio: string; count: number; referenceImages: {url: string, width: number, height: number}[] };
@@ -55,7 +63,6 @@ useEffect(() => { activeTaskRef.current = tasks.find(t => t.id === activeTaskId)
 
 useEffect(() => { initPSPluginBridge(); setIsPSPlugin(isInPhotoshopPlugin()); }, []);
 
-// 从URL读取PS插件传来的参考图（支持query参数和hash）
 useEffect(() => {
   const url = new URL(window.location.href);
   let psRef = url.searchParams.get('ps_ref');
@@ -165,32 +172,34 @@ useEffect(() => { if (model) setResolution(getRes(model, aspectRatio, referenceI
 
 const activeTask = tasks.find(t => t.id === activeTaskId) || null;
 
+const doGenerate = async (taskId: number, body: any) => {
+  try {
+    const resp = await fetch('/api/image', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await safeJson(resp);
+    if (data.error) { alert(data.error); if (mountedRef.current) setTasks(prev=>prev.filter(t=>t.id!==taskId)); return; }
+    if (mountedRef.current) setTasks(prev=>prev.map(t=>t.id===taskId?{...t,status:'complete',result:data.imageUrls}:t));
+    const nr = { time: Date.now(), images: data.imageUrls, prompt: body.prompt };
+    setHistory(prev=>{const nh=[nr,...prev];localStorage.setItem('imageHistory',JSON.stringify(nh));return nh;});
+  } catch(e:any) { alert(e.message); if(mountedRef.current) setTasks(prev=>prev.filter(t=>t.id!==taskId)); }
+};
+
 const handleSubmit = async (e: any) => {
   if (e) e.preventDefault();
   if (!prompt.trim() || uploading) return;
   const taskId = nextTaskId;
-  setTasks(prev => [...prev, { id: taskId, status: 'pending', result: null, prompt, params: { userId, provider, model, resolution, aspectRatio, count, referenceImages: referenceImages.map(i=>({url:i.url,width:i.width,height:i.height})) } }]);
+  const fm = `${provider}-${model}`; let far = aspectRatio;
+  if (aspectRatio === 'auto' && referenceImages.length > 0) {
+    const ir = referenceImages[0].width/referenceImages[0].height; let bm='1:1'; let md=Infinity;
+    const rs=[{r:1/1,v:'1:1'},{r:16/9,v:'16:9'},{r:9/16,v:'9:16'},{r:4/3,v:'4:3'},{r:3/4,v:'3:4'},{r:3/2,v:'3:2'},{r:2/3,v:'2:3'},{r:5/4,v:'5:4'},{r:4/5,v:'4:5'},{r:21/9,v:'21:9'},{r:9/21,v:'9:21'}];
+    for(const x of rs){const d=Math.abs(ir-x.r);if(d<md){md=d;bm=x.v;}} far=bm;
+  }
+  const fs = getRes(model, aspectRatio, referenceImages, provider);
+  const body: any = { userId, model: fm, prompt, size: fs, aspectRatio: far, n: count };
+  if (referenceImages.length>0) body.image = referenceImages.map(i=>i.url);
+  if ((provider==='gpt-image-2'||provider==='gpt-image-2-stable') && aspectRatio==='auto' && referenceImages.length>0) body.useReferenceSize = true;
+  setTasks(prev => [...prev, { id: taskId, status: 'pending', result: null, prompt, params: { userId, provider, model, resolution: fs, aspectRatio: far, count, referenceImages: referenceImages.map(i=>({url:i.url,width:i.width,height:i.height})) } }]);
   setNextTaskId(prev => prev + 1); setActiveTaskId(taskId);
-  (async () => {
-    try {
-      const fm = `${provider}-${model}`; let far = aspectRatio;
-      if (aspectRatio === 'auto' && referenceImages.length > 0) {
-        const ir = referenceImages[0].width/referenceImages[0].height; let bm='1:1'; let md=Infinity;
-        const rs=[{r:1/1,v:'1:1'},{r:16/9,v:'16:9'},{r:9/16,v:'9:16'},{r:4/3,v:'4:3'},{r:3/4,v:'3:4'},{r:3/2,v:'3:2'},{r:2/3,v:'2:3'},{r:5/4,v:'5:4'},{r:4/5,v:'4:5'},{r:21/9,v:'21:9'},{r:9/21,v:'9:21'}];
-        for(const x of rs){const d=Math.abs(ir-x.r);if(d<md){md=d;bm=x.v;}} far=bm;
-      }
-      const fs = getRes(model, aspectRatio, referenceImages, provider);
-      const body: any = { userId, model: fm, prompt, size: fs, aspectRatio: far, n: count };
-      if (referenceImages.length>0) body.image = referenceImages.map(i=>i.url);
-      if ((provider==='gpt-image-2'||provider==='gpt-image-2-stable') && aspectRatio==='auto' && referenceImages.length>0) body.useReferenceSize = true;
-      const resp = await fetch('/api/image', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-      const data = await resp.json();
-      if (data.error) { alert(data.error); if (mountedRef.current) setTasks(prev=>prev.filter(t=>t.id!==taskId)); return; }
-      if (mountedRef.current) setTasks(prev=>prev.map(t=>t.id===taskId?{...t,status:'complete',result:data.imageUrls}:t));
-      const nr = { time: Date.now(), images: data.imageUrls, prompt };
-      setHistory(prev=>{const nh=[nr,...prev];localStorage.setItem('imageHistory',JSON.stringify(nh));return nh;});
-    } catch(e:any) { alert(e.message); if(mountedRef.current) setTasks(prev=>prev.filter(t=>t.id!==taskId)); }
-  })();
+  doGenerate(taskId, body);
 };
 
 const handlePresetClick = async (preset: typeof IMAGE_PRESETS[0]) => {
