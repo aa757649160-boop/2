@@ -19,38 +19,30 @@ const uploadToScdn = async (file: File): Promise<string> => {
   return data.url;
 };
 
-// 带超时的fetch：UXP webview默认超时短，显式设120秒
-const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 120000): Promise<Response> => {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-};
-
-// 安全解析+空响应重试
+// 调用生图API：先读text再parse，空响应自动重试
 const callImageApi = async (body: any, retries = 2): Promise<any> => {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const resp = await fetchWithTimeout('/api/image', {
+      const resp = await fetch('/api/image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       const text = await resp.text();
       if (!text || text.trim() === '') {
-        if (attempt < retries) { await new Promise(r => setTimeout(r, 3000)); continue; }
-        throw new Error('服务器响应超时，请重试');
+        console.warn(`[生图] 第${attempt+1}次响应为空, status=${resp.status}`);
+        if (attempt < retries) { await new Promise(r => setTimeout(r, 5000)); continue; }
+        throw new Error(`服务器返回空响应(HTTP ${resp.status})，请重试`);
       }
       try { return JSON.parse(text); }
-      catch {
-        if (attempt < retries) { await new Promise(r => setTimeout(r, 3000)); continue; }
-        throw new Error('服务器响应格式异常，请重试');
+      catch (e) {
+        console.warn(`[生图] 第${attempt+1}次JSON解析失败:`, text.substring(0, 200));
+        if (attempt < retries) { await new Promise(r => setTimeout(r, 5000)); continue; }
+        throw new Error(`服务器响应格式异常: ${text.substring(0, 100)}`);
       }
     } catch (e: any) {
-      if (e.name === 'AbortError') throw new Error('请求超时，请重试');
+      if (e.message && e.message.startsWith('服务器')) throw e;
+      if (attempt < retries) { console.warn(`[生图] 第${attempt+1}次请求异常:`, e.message); await new Promise(r => setTimeout(r, 5000)); continue; }
       throw e;
     }
   }
@@ -251,6 +243,7 @@ const handleSubmit = async (e: any) => {
       const body: any = { userId, model: fm, prompt, size: fs, aspectRatio: far, n: count };
       if (referenceImages.length > 0) body.image = referenceImages.map(i => i.url);
       if ((provider==='gpt-image-2'||provider==='gpt-image-2-stable') && aspectRatio==='auto' && referenceImages.length>0) body.useReferenceSize = true;
+      console.log('[生图] 请求参数:', { model: fm, size: fs, aspectRatio: far, refCount: referenceImages.length });
       const data = await callImageApi(body);
       if (data.error) { alert(data.error); if (mountedRef.current) setTasks(prev => prev.filter(t=>t.id!==taskId)); return; }
       if (mountedRef.current) setTasks(prev => prev.map(t => t.id===taskId ? {...t, status:'complete', result: data.imageUrls} : t));
