@@ -1,8 +1,7 @@
-// 图片异步任务：提交成功后由前端轮询上游任务状态，避免 Vercel 函数 60 秒超时
+// 图片异步任务：提交成功后由前端轮询（经本站中转接口，上游密钥不出服务端）
 export type UpstreamImageTask = {
   taskId: string;
-  baseUrl: string;
-  apiKey: string;
+  model?: string;
 };
 
 const SUCCESS_STATES = ['SUCCESS', 'SUCCEEDED', 'COMPLETED', 'COMPLETE', 'DONE', 'OK', 'FINISHED'];
@@ -45,7 +44,7 @@ export function extractImageUrlsFromTask(raw: any): string[] {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * 轮询上游图片异步任务，返回图片地址数组；失败或超时抛错
+ * 轮询图片异步任务（走 /api/image/task 中转），返回图片地址数组；失败或超时抛错
  */
 export async function awaitImageTask(
   task: UpstreamImageTask,
@@ -53,32 +52,31 @@ export async function awaitImageTask(
 ): Promise<string[]> {
   const maxAttempts = opts.maxAttempts ?? 600;   // 600 * 2s = 20 分钟
   const intervalMs = opts.intervalMs ?? 2000;
-  if (!task?.taskId || !task?.baseUrl) throw new Error('任务信息缺失，请重试');
+  if (!task?.taskId) throw new Error('任务信息缺失，请重试');
 
   for (let i = 0; i < maxAttempts; i++) {
     let data: any = null;
     try {
-      const res = await fetch(`${task.baseUrl}/v1/images/tasks/${encodeURIComponent(task.taskId)}`, {
-        headers: { 'Authorization': `Bearer ${task.apiKey}` },
-      });
-      const text = await res.text();
-      try { data = JSON.parse(text); } catch { data = null; }
+      const url = `/api/image/task?taskId=${encodeURIComponent(task.taskId)}&model=${encodeURIComponent(task.model || '')}`;
+      const res = await fetch(url, { cache: 'no-store' });
+      data = await res.json();
     } catch (e) {
       // 网络抖动，继续轮询
       data = null;
     }
 
     if (data) {
-      const status = String(data.status || data.data?.status || data.task_status || '').toUpperCase();
+      const status = String(data.status || '').toUpperCase();
       if (FAILURE_STATES.indexOf(status) > -1) {
-        const reason = data.fail_reason || data.error?.message || (typeof data.error === 'string' ? data.error : '') || data.message;
+        const reason = data.error || '';
         throw new Error(reason ? `图片生成失败：${reason}` : '图片生成失败，请重试');
       }
-      const urls = extractImageUrlsFromTask(data);
+      const urls: string[] = Array.isArray(data.imageUrls) ? data.imageUrls : [];
       if (urls.length > 0) return urls;
       if (SUCCESS_STATES.indexOf(status) > -1) {
         throw new Error('任务已完成但未返回图片地址，请重试');
       }
+      // IN_PROGRESS / 查询暂时失败：继续等
     }
 
     await sleep(intervalMs);

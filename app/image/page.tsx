@@ -317,7 +317,7 @@ const handleSubmit = async (e: any) => {
       // 后端只建了异步任务：前端轮询上游任务状态，直到出图（避免函数 60s 超时）
       let imageUrls: string[] = data.imageUrls;
       if (!imageUrls && data.taskId) {
-        imageUrls = await awaitImageTask({ taskId: data.taskId, baseUrl: data.baseUrl, apiKey: data.apiKey });
+        imageUrls = await awaitImageTask({ taskId: data.taskId, model: fm });
       }
       if (mountedRef.current) setTasks(prev => prev.map(t => t.id===taskId ? {...t, status:'complete', result: imageUrls} : t));
       const nr = { time: Date.now(), images: imageUrls, prompt };

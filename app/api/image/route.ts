@@ -180,10 +180,10 @@ export async function POST(request: Request) {
           return NextResponse.json({ imageUrls: immediateUrls });
         }
         console.log('[image] 异步任务已创建:', upstreamTaskId, submitted.baseUrl);
+        // 只返回任务ID和模型名，上游密钥/域名不出服务端，前端通过 /api/image/task 轮询
         return NextResponse.json({
           taskId: upstreamTaskId,
-          baseUrl: submitted.baseUrl,
-          apiKey: submitted.apiKey,
+          model,
         });
       }
       console.warn('[image] 异步接口未返回任务ID，回退同步接口:', JSON.stringify(submitted.data).substring(0, 300));
