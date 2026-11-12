@@ -198,11 +198,13 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({ error: '获取任务ID失败' }, { status: 500 });
     }
-    // 创建任务成功，直接把任务ID返回给前端，让前端自己轮询
+    // 创建任务成功，只把任务ID返回给前端；轮询地址指回本站（/v2/videos/generations/{taskId} 由服务端中转），
+    // 上游密钥不再下发到浏览器，apiKey 字段仅为兼容前端现有轮询代码的占位值
+    const siteOrigin = new URL(req.url).origin;
     return NextResponse.json({
       taskId: taskId,
-      baseUrl: baseUrl,
-      apiKey: apiKey,
+      baseUrl: siteOrigin,
+      apiKey: 'server-side-proxy',
     });
   } catch (error: any) {
     // 手动构造JSON响应，确保无论如何都返回正确的JSON格式，避免前端解析失败
