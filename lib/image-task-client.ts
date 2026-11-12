@@ -22,8 +22,10 @@ export function extractImageUrlsFromTask(raw: any): string[] {
     out.push(v);
   };
   const walk = (node: any, depth: number) => {
-    if (!node || depth > 4) return;
+    if (node === undefined || node === null) return;
+    // 字符串先判、不受深度限制：上游结果常常嵌套 4~5 层（data.data.data[].url）
     if (typeof node === 'string') { pushUrl(node); return; }
+    if (depth > 8) return;
     if (Array.isArray(node)) { node.forEach(item => walk(item, depth + 1)); return; }
     if (typeof node !== 'object') return;
     if (typeof node.b64_json === 'string' && node.b64_json) {
@@ -54,6 +56,8 @@ export async function awaitImageTask(
   const intervalMs = opts.intervalMs ?? 2000;
   if (!task?.taskId) throw new Error('任务信息缺失，请重试');
 
+  let successSeen = 0;
+
   for (let i = 0; i < maxAttempts; i++) {
     let data: any = null;
     try {
@@ -74,7 +78,11 @@ export async function awaitImageTask(
       const urls: string[] = Array.isArray(data.imageUrls) ? data.imageUrls : [];
       if (urls.length > 0) return urls;
       if (SUCCESS_STATES.indexOf(status) > -1) {
-        throw new Error('任务已完成但未返回图片地址，请重试');
+        // 上游偶尔先置 SUCCESS、稍后才写回图片地址，多等几轮再判失败
+        successSeen++;
+        if (successSeen >= 5) {
+          throw new Error('任务已完成但未返回图片地址，请重试');
+        }
       }
       // IN_PROGRESS / 查询暂时失败：继续等
     }

@@ -42,7 +42,13 @@ export async function GET(request: Request) {
         console.warn('[image/task] 上游返回', t.baseUrl, res.status);
         continue;
       }
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = null;
+      try { data = JSON.parse(text); } catch { data = null; }
+      if (!data) {
+        console.warn('[image/task] 返回非JSON:', text.substring(0, 200));
+        continue;
+      }
       // 上游返回 { code, message, data: { status, fail_reason, data: { data: [ { url } ] } } }
       const status = String(data?.data?.status || data?.status || data?.task_status || '').toUpperCase();
       const imageUrls = extractImageUrlsFromTask(data);
@@ -52,6 +58,9 @@ export async function GET(request: Request) {
         || (typeof data?.error === 'string' ? data.error : '')
         || data?.message
         || '';
+      if (status === 'SUCCESS' && imageUrls.length === 0) {
+        console.warn('[image/task] 状态SUCCESS但未提取到图片URL，返回体:', text.substring(0, 800));
+      }
       return NextResponse.json({ status, imageUrls, error: errorText });
     } catch (e: any) {
       console.warn('[image/task] 查询异常:', e.message);
