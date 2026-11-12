@@ -75,7 +75,8 @@ export async function POST(request: Request) {
     const modelParts = apiModel.split('-');
     const lastPart = modelParts[modelParts.length - 1];
     const isSizeSuffix = lastPart === '1k' || lastPart === '2k' || lastPart === '4k';
-    if (modelParts.length > 1 && isSizeSuffix && (!apiModel.includes('sunburst') || lastPart === '1k')) {
+    // 1k/2k/4k 只是本站的选择与计费档位，发给上游的模型名一律去掉分辨率后缀，分辨率由 size / image_size 传
+    if (modelParts.length > 1 && isSizeSuffix) {
       apiModel = modelParts.slice(0, -1).join('-');
     }
 
