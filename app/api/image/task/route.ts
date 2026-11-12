@@ -7,6 +7,8 @@ export const dynamic = 'force-dynamic';
 
 // 只允许合法任务ID，避免被拿来做路径注入
 const TASK_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+// 失败态：命中即自动退积分
+const FAILURE_STATES = ['FAILURE', 'FAILED', 'FAIL', 'ERROR', 'CANCELED', 'CANCELLED', 'TIMEOUT'];
 
 /**
  * 图片异步任务查询中转：浏览器 → 本接口 → 上游
@@ -60,6 +62,22 @@ export async function GET(request: Request) {
         || '';
       if (status === 'SUCCESS' && imageUrls.length === 0) {
         console.warn('[image/task] 状态SUCCESS但未提取到图片URL，返回体:', text.substring(0, 800));
+      }
+      // 任务失败：自动退回本次扣的积分（同一任务只退一次）
+      if (FAILURE_STATES.indexOf(status) > -1) {
+        let refunded = false;
+        try {
+          const { refundAsyncTask } = await import('@/lib/db');
+          refunded = await refundAsyncTask(taskId, errorText);
+        } catch (e: any) {
+          console.warn('[image/task] 退积分失败:', e?.message);
+        }
+        const reason = errorText || '任务失败';
+        return NextResponse.json({
+          status,
+          imageUrls: [],
+          error: refunded ? `${reason}（积分已自动退回）` : reason,
+        });
       }
       return NextResponse.json({ status, imageUrls, error: errorText });
     } catch (e: any) {

@@ -180,10 +180,16 @@ export async function POST(request: Request) {
       const immediateUrls = extractImageUrlsFromTask(submitted.data);
       const upstreamTaskId = findTaskId(submitted.data);
       if (immediateUrls.length > 0 || upstreamTaskId) {
-        const { deductUserPoints } = await import('@/lib/db');
+        const { deductUserPoints, recordAsyncTask } = await import('@/lib/db');
         await deductUserPoints(userId, totalPrice, `绘图生成：${model}${isStableApi ? '（稳定接口）' : ''}`);
         if (immediateUrls.length > 0) {
           return NextResponse.json({ imageUrls: immediateUrls });
+        }
+        // 登记任务，后续任务失败时由 /api/image/task 自动退分
+        try {
+          await recordAsyncTask({ taskId: upstreamTaskId!, userId, points: totalPrice, kind: 'image', model });
+        } catch (e: any) {
+          console.warn('[image] 登记异步任务失败（不影响出图）:', e?.message);
         }
         console.log('[image] 异步任务已创建:', upstreamTaskId, submitted.baseUrl);
         // 只返回任务ID和模型名，上游密钥/域名不出服务端，前端通过 /api/image/task 轮询

@@ -1860,7 +1860,11 @@ export default function HomePage() {
                             {deduction.description}
                           </td>
                           <td className="py-4 px-4 text-sm text-right">
-                            <span className="text-red-500 font-medium">-{deduction.amount.toFixed(2)}</span>
+                            {deduction.description.startsWith('退回') ? (
+                              <span className="text-green-600 font-medium">+{deduction.amount.toFixed(2)}</span>
+                            ) : (
+                              <span className="text-red-500 font-medium">-{deduction.amount.toFixed(2)}</span>
+                            )}
                           </td>
                         </tr>
                       ))}

@@ -173,8 +173,8 @@ export async function POST(req: NextRequest) {
       // 把API返回的所有内容都返回，方便调试
       return NextResponse.json({ error: `API调用失败，返回内容: ${JSON.stringify(data)}` }, { status: response.status });
     }
-    // 扣除积分并记录扣费历史
-    const { deductUserPoints } = await import('@/lib/db');
+    // 先确定任务是否真的创建成功，再扣分，避免建任务失败也扣钱
+    const { deductUserPoints, recordAsyncTask } = await import('@/lib/db');
     let description = `视频生成：${model}`;
     if (body.duration) {
       description += ` ${body.duration}秒`;
@@ -183,7 +183,6 @@ export async function POST(req: NextRequest) {
     if (model === 'doubao-seedance-2-0-260128' && resolution === '1080p') {
       description += ` 1080p`;
     }
-    await deductUserPoints(userId, price, description);
     // 不管是什么模型，现在都改成前端轮询模式，后端只创建任务，不等待结果
     // 这样就不会有Vercel函数超时的问题了
     const taskId = data.id || data.task_id;
@@ -192,11 +191,19 @@ export async function POST(req: NextRequest) {
       const directVideoUrl = data.video_url || data.output || data.data?.output;
       if (directVideoUrl) {
         // doubao的同步模式，直接返回结果
+        await deductUserPoints(userId, price, description);
         return NextResponse.json({
           videoUrl: directVideoUrl,
         });
       }
       return NextResponse.json({ error: '获取任务ID失败' }, { status: 500 });
+    }
+    await deductUserPoints(userId, price, description);
+    // 登记任务，后续任务失败时由 /v2/videos/generations/{taskId} 自动退分
+    try {
+      await recordAsyncTask({ taskId, userId, points: price, kind: 'video', model });
+    } catch (e: any) {
+      console.warn('[video] 登记异步任务失败（不影响生成）:', e?.message);
     }
     // 创建任务成功，只把任务ID返回给前端；轮询地址指回本站（/v2/videos/generations/{taskId} 由服务端中转），
     // 上游密钥不再下发到浏览器，apiKey 字段仅为兼容前端现有轮询代码的占位值

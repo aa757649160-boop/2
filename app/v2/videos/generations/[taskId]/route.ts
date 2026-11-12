@@ -70,7 +70,20 @@ export async function GET(
         return NextResponse.json({ status: 'SUCCESS', video_url: videoUrl, fail_reason: '' });
       }
       if (FAILURE_STATES.indexOf(status) > -1) {
-        return NextResponse.json({ status: 'FAILED', video_url: '', fail_reason: failReason || '任务失败' });
+        // 任务失败：自动退回本次扣的积分（同一任务只退一次）
+        let refunded = false;
+        try {
+          const { refundAsyncTask } = await import('@/lib/db');
+          refunded = await refundAsyncTask(taskId, failReason);
+        } catch (e: any) {
+          console.warn('[videos/generations] 退积分失败:', e?.message);
+        }
+        const reason = failReason || '任务失败';
+        return NextResponse.json({
+          status: 'FAILED',
+          video_url: '',
+          fail_reason: refunded ? `${reason}（积分已自动退回）` : reason,
+        });
       }
       if (SUCCESS_STATES.indexOf(status) > -1) {
         // 上游说完成但还没给地址，继续让前端等下一轮

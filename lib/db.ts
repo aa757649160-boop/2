@@ -74,6 +74,20 @@ async function initTables() {
       FOREIGN KEY (user_id) REFERENCES users(user_id)
     )
   `;
+
+  // 异步任务登记表：记录建任务时扣的积分，任务失败时据此自动退回（同一任务只退一次）
+  await sql`
+    CREATE TABLE IF NOT EXISTS async_tasks (
+      task_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      points DOUBLE PRECISION NOT NULL,
+      kind TEXT NOT NULL,
+      model TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      refunded_at TIMESTAMP
+    )
+  `;
 }
 
 // 初始化数据库
@@ -125,6 +139,68 @@ export async function getUserDeductions(userId: string) {
     WHERE user_id = ${userId}
     ORDER BY created_at DESC
   `;
+}
+
+/**
+ * 登记异步任务（建任务并扣分后调用），用于后续失败自动退分
+ * kind: 'image' | 'video'
+ */
+export async function recordAsyncTask(input: {
+  taskId: string;
+  userId: string;
+  points: number;
+  kind: string;
+  model?: string;
+}) {
+  const { taskId, userId, points, kind, model } = input;
+  if (!taskId || !userId || !(points > 0)) return;
+  await sql`
+    INSERT INTO async_tasks (task_id, user_id, points, kind, model, status)
+    VALUES (${taskId}, ${userId}, ${points}, ${kind}, ${model || ''}, 'pending')
+    ON CONFLICT (task_id) DO NOTHING
+  `;
+}
+
+/**
+ * 异步任务失败退积分：只有登记过、且没退过的任务才退，天然幂等（前端反复轮询也只退一次）
+ * 返回是否真的退了
+ */
+export async function refundAsyncTask(taskId: string, reason?: string): Promise<boolean> {
+  if (!taskId) return false;
+
+  // 先抢占状态，避免并发轮询重复退款
+  const rows = await sql`
+    UPDATE async_tasks
+    SET status = 'refunded', refunded_at = CURRENT_TIMESTAMP
+    WHERE task_id = ${taskId} AND status <> 'refunded'
+    RETURNING user_id, points, kind, model
+  `;
+  if (rows.length === 0) return false;
+
+  const row: any = rows[0];
+  const points = Number(row.points) || 0;
+  const userId = String(row.user_id || '');
+  if (!userId || !(points > 0)) return false;
+
+  await sql`
+    UPDATE users SET points = points + ${points} WHERE user_id = ${userId}
+  `;
+
+  const kindText = row.kind === 'video' ? '视频' : '图片';
+  let description = `退回积分：${kindText}任务失败（${row.model || ''}）`;
+  if (reason) description += ` ${String(reason).substring(0, 80)}`;
+
+  try {
+    await sql`
+      INSERT INTO point_deductions (user_id, amount, description)
+      VALUES (${userId}, ${points}, ${description})
+    `;
+  } catch (e) {
+    console.warn('[refund] 记录退分历史失败（积分已退回）:', (e as any)?.message);
+  }
+
+  console.log('[refund] 已退积分', points, '给', userId, '任务', taskId);
+  return true;
 }
 
 export async function registerUser(username: string, password: string) {
