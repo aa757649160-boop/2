@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Navbar from '@/components/Navbar';
 import { IMAGE_MODELS, IMAGE_RESOLUTIONS, MODEL_PRICING, IMAGE_PRESETS, VIDEO_MODELS, RECHARGE_TIERS, PAYMENT_QRCODE } from '@/lib/config';
+import { awaitImageTask } from '@/lib/image-task-client';
 
 type TabType = 'image' | 'video' | 'profile';
 
@@ -363,7 +364,11 @@ export default function HomePage() {
               }
               return;
             }
-            const imageUrls = data.imageUrls;
+            // 后端只建了异步任务：前端轮询上游任务状态，直到出图
+            let imageUrls: string[] = data.imageUrls;
+            if (!imageUrls && data.taskId) {
+              imageUrls = await awaitImageTask({ taskId: data.taskId, baseUrl: data.baseUrl, apiKey: data.apiKey });
+            }
             if (imageMountedRef.current) {
               setImageTasks(prev => prev.map(t => {
                 if (t.id === task.id) {
@@ -647,7 +652,11 @@ export default function HomePage() {
           setImageTasks(prev => prev.filter(t => t.id !== taskId));
           return;
         }
-        const imageUrls = data.imageUrls;
+        // 后端只建了异步任务：前端轮询上游任务状态，直到出图（避免函数 60s 超时）
+        let imageUrls: string[] = data.imageUrls;
+        if (!imageUrls && data.taskId) {
+          imageUrls = await awaitImageTask({ taskId: data.taskId, baseUrl: data.baseUrl, apiKey: data.apiKey });
+        }
         if (imageMountedRef.current) {
           setImageTasks(prev => prev.map(t => {
             if (t.id === taskId) {

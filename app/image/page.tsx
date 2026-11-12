@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { IMAGE_MODELS, IMAGE_RESOLUTIONS, MODEL_PRICING, IMAGE_PRESETS } from '@/lib/config';
 import { isInPhotoshopPlugin, capturePSLayer, sendToPhotoshop, registerPSRequestHandler, initPSPluginBridge } from '@/lib/psPlugin';
+import { awaitImageTask } from '@/lib/image-task-client';
 import Navbar from '@/components/Navbar';
 
 const uploadToScdn = async (file: File): Promise<string> => {
@@ -313,8 +314,13 @@ const handleSubmit = async (e: any) => {
       if ((provider==='gpt-image-2'||provider==='gpt-image-2-stable') && aspectRatio==='auto' && referenceImages.length>0) body.useReferenceSize = true;
       const data = await callImageApi(body);
       if (data.error) { alert(data.error); if (mountedRef.current) setTasks(prev => prev.filter(t=>t.id!==taskId)); return; }
-      if (mountedRef.current) setTasks(prev => prev.map(t => t.id===taskId ? {...t, status:'complete', result: data.imageUrls} : t));
-      const nr = { time: Date.now(), images: data.imageUrls, prompt };
+      // 后端只建了异步任务：前端轮询上游任务状态，直到出图（避免函数 60s 超时）
+      let imageUrls: string[] = data.imageUrls;
+      if (!imageUrls && data.taskId) {
+        imageUrls = await awaitImageTask({ taskId: data.taskId, baseUrl: data.baseUrl, apiKey: data.apiKey });
+      }
+      if (mountedRef.current) setTasks(prev => prev.map(t => t.id===taskId ? {...t, status:'complete', result: imageUrls} : t));
+      const nr = { time: Date.now(), images: imageUrls, prompt };
       setHistory(prev => { const nh=[nr,...prev]; localStorage.setItem('imageHistory',JSON.stringify(nh)); return nh; });
     } catch (e: any) { alert(e.message); if (mountedRef.current) setTasks(prev => prev.filter(t=>t.id!==taskId)); }
   })();

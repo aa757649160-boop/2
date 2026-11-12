@@ -1,9 +1,62 @@
 import { NextResponse } from 'next/server';
 import { proxyApiRequestWithKey } from '@/lib/api-proxy';
 import { getUserPoints } from '@/lib/db';
-import { MODEL_PRICING, STABLE_API } from '@/lib/config';
+import { MODEL_PRICING, STABLE_API, MAIN_API, BACKUP_API } from '@/lib/config';
+import { extractImageUrlsFromTask } from '@/lib/image-task-client';
 
 export const maxDuration = 60;
+
+type SubmitResult = { baseUrl: string; apiKey: string; data: any };
+
+/**
+ * 从异步提交的返回里取任务ID（兼容 task_id / id / data.task_id 等写法）
+ */
+function findTaskId(data: any): string | null {
+  if (!data || data.error) return null;
+  const candidates = [data.task_id, data.taskId, data.id, data.data?.task_id, data.data?.taskId, data.data?.id, data.result?.task_id];
+  for (const c of candidates) {
+    if (c === undefined || c === null || c === '') continue;
+    if (typeof c === 'object') continue;
+    const s = String(c).trim();
+    if (!s) continue;
+    if (/^\d{1,3}$/.test(s)) continue;   // 排除 HTTP 状态码/错误码
+    return s;
+  }
+  return null;
+}
+
+/**
+ * 提交图片异步任务（POST /v1/images/tasks），返回任务ID由前端轮询
+ */
+async function submitAsyncImageTask(body: any, customApiKey?: string): Promise<SubmitResult | null> {
+  const targets = customApiKey
+    ? [{ baseUrl: MAIN_API.baseUrl, apiKey: customApiKey }]
+    : [
+        { baseUrl: MAIN_API.baseUrl, apiKey: MAIN_API.apiKey },
+        { baseUrl: BACKUP_API.baseUrl, apiKey: BACKUP_API.apiKey },
+      ];
+  for (const t of targets) {
+    if (!t.apiKey) continue;
+    try {
+      const res = await fetch(`${t.baseUrl}/v1/images/tasks`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${t.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const text = await res.text();
+      let data: any = null;
+      try { data = JSON.parse(text); } catch { data = null; }
+      if (res.ok && data) return { baseUrl: t.baseUrl, apiKey: t.apiKey, data };
+      console.warn('[image] 异步提交失败:', res.status, text.substring(0, 200));
+    } catch (e: any) {
+      console.warn('[image] 异步提交异常:', e.message);
+    }
+  }
+  return null;
+}
 
 const SIZE_SUFFIXES = ['1k', '2k', '4k'];
 
@@ -111,9 +164,35 @@ export async function POST(request: Request) {
     }
 
     const apiKey = isStableApi ? STABLE_API.apiKey : undefined;
+
+    // ==================== 异步模式（优先）：只建任务，结果由前端轮询 ====================
+    // 上游：POST /v1/images/tasks 建任务 → GET /v1/images/tasks/{task_id} 查结果（SUCCESS / FAILURE / IN_PROGRESS）
+    // 这样本函数只等“建任务”这一步（几秒），不会再撞 Vercel 的 60 秒超时
+    console.log('[image] 提交异步任务:', JSON.stringify(requestBody).substring(0, 500));
+    const submitted = await submitAsyncImageTask(requestBody, apiKey);
+    if (submitted) {
+      const immediateUrls = extractImageUrlsFromTask(submitted.data);
+      const upstreamTaskId = findTaskId(submitted.data);
+      if (immediateUrls.length > 0 || upstreamTaskId) {
+        const { deductUserPoints } = await import('@/lib/db');
+        await deductUserPoints(userId, totalPrice, `绘图生成：${model}${isStableApi ? '（稳定接口）' : ''}`);
+        if (immediateUrls.length > 0) {
+          return NextResponse.json({ imageUrls: immediateUrls });
+        }
+        console.log('[image] 异步任务已创建:', upstreamTaskId, submitted.baseUrl);
+        return NextResponse.json({
+          taskId: upstreamTaskId,
+          baseUrl: submitted.baseUrl,
+          apiKey: submitted.apiKey,
+        });
+      }
+      console.warn('[image] 异步接口未返回任务ID，回退同步接口:', JSON.stringify(submitted.data).substring(0, 300));
+    }
+
+    // ==================== 回退：老的同步接口 ====================
     const imageEndpoint = '/v1/images/generations';
 
-    console.log('[image] request:', imageEndpoint, JSON.stringify(requestBody).substring(0, 500));
+    console.log('[image] 同步请求:', imageEndpoint, JSON.stringify(requestBody).substring(0, 500));
     const response = await proxyApiRequestWithKey(
       imageEndpoint,
       requestBody,
