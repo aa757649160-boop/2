@@ -43,9 +43,11 @@ export async function GET(request: Request) {
         continue;
       }
       const data = await res.json();
-      const status = String(data?.status || data?.data?.status || data?.task_status || '').toUpperCase();
+      // 上游返回 { code, message, data: { status, fail_reason, data: { data: [ { url } ] } } }
+      const status = String(data?.data?.status || data?.status || data?.task_status || '').toUpperCase();
       const imageUrls = extractImageUrlsFromTask(data);
-      const errorText = data?.fail_reason
+      const errorText = data?.data?.fail_reason
+        || data?.fail_reason
         || data?.error?.message
         || (typeof data?.error === 'string' ? data.error : '')
         || data?.message

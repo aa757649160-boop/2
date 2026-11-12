@@ -9,10 +9,16 @@ export const maxDuration = 60;
 type SubmitResult = { baseUrl: string; apiKey: string; data: any };
 
 /**
- * 从异步提交的返回里取任务ID（兼容 task_id / id / data.task_id 等写法）
+ * 从异步提交的返回里取任务ID
+ * 上游异步提交返回形如 { code: "success", message: "", data: "<task_id>" }，也兼容 task_id / id / data.task_id
  */
 function findTaskId(data: any): string | null {
   if (!data || data.error) return null;
+  if (typeof data.code === 'string' && data.code !== '' && data.code !== 'success' && data.code !== '0') return null;
+  if (typeof data.data === 'string') {
+    const s = data.data.trim();
+    if (s) return s;
+  }
   const candidates = [data.task_id, data.taskId, data.id, data.data?.task_id, data.data?.taskId, data.data?.id, data.result?.task_id];
   for (const c of candidates) {
     if (c === undefined || c === null || c === '') continue;
@@ -26,7 +32,7 @@ function findTaskId(data: any): string | null {
 }
 
 /**
- * 提交图片异步任务（POST /v1/images/tasks），返回任务ID由前端轮询
+ * 提交图片异步任务：POST /v1/images/generations?async=true（body 与同步一致），返回任务ID由前端轮询
  */
 async function submitAsyncImageTask(body: any, customApiKey?: string): Promise<SubmitResult | null> {
   const targets = customApiKey
@@ -38,7 +44,7 @@ async function submitAsyncImageTask(body: any, customApiKey?: string): Promise<S
   for (const t of targets) {
     if (!t.apiKey) continue;
     try {
-      const res = await fetch(`${t.baseUrl}/v1/images/tasks`, {
+      const res = await fetch(`${t.baseUrl}/v1/images/generations?async=true`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
