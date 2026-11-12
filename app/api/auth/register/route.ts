@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { registerUser, verifyCode } from '@/lib/db';
+import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from '@/lib/session';
 
 export async function POST(request: Request) {
   try {
@@ -18,7 +19,10 @@ export async function POST(request: Request) {
     // 注册用户
     const userId = await registerUser(email, password);
 
-    return NextResponse.json({ success: true, userId });
+    const res = NextResponse.json({ success: true, userId });
+    // 注册成功即登录
+    res.cookies.set(SESSION_COOKIE, createSessionToken(userId), sessionCookieOptions());
+    return res;
   } catch (error: any) {
     console.error('Register error:', error);
     if (error.constraint === 'users_username_key') {

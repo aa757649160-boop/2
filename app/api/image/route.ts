@@ -3,6 +3,7 @@ import { proxyApiRequestWithKey } from '@/lib/api-proxy';
 import { getUserPoints } from '@/lib/db';
 import { MODEL_PRICING, STABLE_API, MAIN_API, BACKUP_API } from '@/lib/config';
 import { extractImageUrlsFromTask } from '@/lib/image-task-client';
+import { getSessionUserId } from '@/lib/session';
 
 export const maxDuration = 60;
 
@@ -89,10 +90,12 @@ const validateAndFixSize = (size: string): string => {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { userId, model, prompt, size: rawSize, image, aspectRatio, n = 1, useReferenceSize } = body;
+    const { model, prompt, size: rawSize, image, aspectRatio, n = 1, useReferenceSize } = body;
 
+    // 身份只认服务端会话，忽略 body 里的 userId
+    const userId = getSessionUserId();
     if (!userId) {
-      return NextResponse.json({ error: '用户未登录' });
+      return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
     if (!prompt || !prompt.trim()) {
       return NextResponse.json({ error: '提示词不能为空' });

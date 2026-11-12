@@ -5,6 +5,7 @@ import {
   MODEL_PRICING
 } from '@/lib/config';
 import { getUserPoints, updateUserPoints } from '@/lib/db';
+import { getSessionUserId } from '@/lib/session';
 // 轮询任务状态的函数
 async function pollTaskStatus(baseUrl: string, apiKey: string, taskId: string, maxAttempts: number) {
   // 轮询次数，每次2秒，veo3.1模型需要900次=30分钟，其他模型600次=20分钟
@@ -55,7 +56,6 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
-      userId,
       model,
       prompt,
       images,
@@ -67,7 +67,13 @@ export async function POST(req: NextRequest) {
       return_last_frame,
       generate_audio
     } = body;
-    if (!userId || !model || !prompt) {
+
+    // 身份只认服务端会话，忽略 body 里的 userId
+    const userId = getSessionUserId();
+    if (!userId) {
+      return NextResponse.json({ error: '请先登录' }, { status: 401 });
+    }
+    if (!model || !prompt) {
       return NextResponse.json({ error: '参数错误' }, { status: 400 });
     }
     // 检查余额

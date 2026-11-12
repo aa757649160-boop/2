@@ -33,6 +33,8 @@ export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
 
   const handleLogout = () => {
     localStorage.removeItem('userId');
+    // 同时清掉服务端会话 cookie，否则 cookie 仍然有效
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     window.location.href = '/login';
   };
 

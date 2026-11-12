@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { proxyStreamRequest } from '@/lib/api-proxy';
 import { getUserPoints, deductUserPoints } from '@/lib/db';
 import { MODEL_PRICING } from '@/lib/config';
+import { getSessionUserId } from '@/lib/session';
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model, userId, stream = true } = await req.json();
+    const { messages, model, stream = true } = await req.json();
 
+    // 身份只认服务端会话，忽略 body 里的 userId
+    const userId = getSessionUserId();
     if (!userId) {
-      return NextResponse.json({ error: '用户ID不能为空' }, { status: 400 });
+      return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
 
     if (!model) {
