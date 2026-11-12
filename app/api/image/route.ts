@@ -5,6 +5,8 @@ import { MODEL_PRICING, STABLE_API } from '@/lib/config';
 
 export const maxDuration = 60;
 
+const SIZE_SUFFIXES = ['1k', '2k', '4k'];
+
 const validateAndFixSize = (size: string): string => {
   if (!size || typeof size !== 'string') return '1024x1024';
   const parts = size.split('x');
@@ -75,9 +77,18 @@ export async function POST(request: Request) {
     const modelParts = apiModel.split('-');
     const lastPart = modelParts[modelParts.length - 1];
     const isSizeSuffix = lastPart === '1k' || lastPart === '2k' || lastPart === '4k';
-    // 1k/2k/4k 只是本站的选择与计费档位，发给上游的模型名一律去掉分辨率后缀，分辨率由 size / image_size 传
-    if (modelParts.length > 1 && isSizeSuffix) {
-      apiModel = modelParts.slice(0, -1).join('-');
+    // 先剥掉模型名末尾所有分辨率后缀，得到干净的基础模型名（重复后缀也一并清掉）
+    let baseParts = modelParts;
+    while (baseParts.length > 1 && SIZE_SUFFIXES.indexOf(baseParts[baseParts.length - 1]) > -1) {
+      baseParts = baseParts.slice(0, -1);
+    }
+    const baseModel = baseParts.join('-');
+    // sunburst 系列：2k / 4k 档位发给上游的模型名带且只带一次分辨率后缀（如 gpt-image-2.6-sunburst-2k）
+    // 其余情况（其他模型、sunburst 的 1k）只用基础名，分辨率由 size / image_size 传
+    if (isSizeSuffix && baseModel.indexOf('sunburst') > -1 && (lastPart === '2k' || lastPart === '4k')) {
+      apiModel = baseModel + '-' + lastPart;
+    } else {
+      apiModel = baseModel;
     }
 
     let requestBody: any = {
