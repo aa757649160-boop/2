@@ -74,23 +74,14 @@ export async function POST(request: Request) {
     if (isStableApi) {
       apiModel = model.replace('-stable-', '-');
     }
-    const modelParts = apiModel.split('-');
-    const lastPart = modelParts[modelParts.length - 1];
-    const isSizeSuffix = lastPart === '1k' || lastPart === '2k' || lastPart === '4k';
-    // 先剥掉模型名末尾所有分辨率后缀，得到干净的基础模型名（重复后缀也一并清掉）
-    let baseParts = modelParts;
+    // 剥掉模型名末尾所有分辨率后缀（1k/2k/4k，重复的也一并清掉），得到基础模型名
+    let baseParts = apiModel.split('-');
     while (baseParts.length > 1 && SIZE_SUFFIXES.indexOf(baseParts[baseParts.length - 1]) > -1) {
       baseParts = baseParts.slice(0, -1);
     }
-    const baseModel = baseParts.join('-');
-    // gpt-image 系列（含 sunburst / 稳定接口）：2k / 4k 档位发给上游的模型名带且只带一次分辨率后缀（如 gpt-image-2-2k、gpt-image-2.6-sunburst-2k）
-    // nano-banana 系列走 image_size，其余（含 1k）只用基础名，分辨率由 size 传
-    const isNanoSeries = baseModel.indexOf('nano-banana') > -1;
-    if (isSizeSuffix && !isNanoSeries && (lastPart === '2k' || lastPart === '4k')) {
-      apiModel = baseModel + '-' + lastPart;
-    } else {
-      apiModel = baseModel;
-    }
+    // 1k / 2k / 4k 只是本站的选择与计费档位，发给上游的模型名一律只用基础名，不带任何分辨率后缀
+    // 分辨率由 size（gpt-image 系列）或 image_size（nano-banana 系列）传
+    apiModel = baseParts.join('-');
 
     let requestBody: any = {
       model: apiModel,
