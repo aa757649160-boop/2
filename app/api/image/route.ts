@@ -83,9 +83,10 @@ export async function POST(request: Request) {
       baseParts = baseParts.slice(0, -1);
     }
     const baseModel = baseParts.join('-');
-    // sunburst 系列：2k / 4k 档位发给上游的模型名带且只带一次分辨率后缀（如 gpt-image-2.6-sunburst-2k）
-    // 其余情况（其他模型、sunburst 的 1k）只用基础名，分辨率由 size / image_size 传
-    if (isSizeSuffix && baseModel.indexOf('sunburst') > -1 && (lastPart === '2k' || lastPart === '4k')) {
+    // gpt-image 系列（含 sunburst / 稳定接口）：2k / 4k 档位发给上游的模型名带且只带一次分辨率后缀（如 gpt-image-2-2k、gpt-image-2.6-sunburst-2k）
+    // nano-banana 系列走 image_size，其余（含 1k）只用基础名，分辨率由 size 传
+    const isNanoSeries = baseModel.indexOf('nano-banana') > -1;
+    if (isSizeSuffix && !isNanoSeries && (lastPart === '2k' || lastPart === '4k')) {
       apiModel = baseModel + '-' + lastPart;
     } else {
       apiModel = baseModel;
