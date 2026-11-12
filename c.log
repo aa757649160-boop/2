@@ -1,0 +1,4 @@
+﻿[main 0dfbf94] 修复：图片异步提交改用官方契约 POST /v1/images/generations?async=true，查询解析 data.data.status 嵌套结构
+ 2 files changed, 13 insertions(+), 5 deletions(-)
+commit_exit=0
+0dfbf94 修复：图片异步提交改用官方契约 POST /v1/images/generations?async=true，查询解析 data.data.status 嵌套结构

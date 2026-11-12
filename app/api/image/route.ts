@@ -172,7 +172,7 @@ export async function POST(request: Request) {
     const apiKey = isStableApi ? STABLE_API.apiKey : undefined;
 
     // ==================== 异步模式（优先）：只建任务，结果由前端轮询 ====================
-    // 上游：POST /v1/images/tasks 建任务 → GET /v1/images/tasks/{task_id} 查结果（SUCCESS / FAILURE / IN_PROGRESS）
+    // 上游：POST /v1/images/generations?async=true 建任务 → GET /v1/images/tasks/{task_id} 查结果（SUCCESS / FAILURE / IN_PROGRESS）
     // 这样本函数只等“建任务”这一步（几秒），不会再撞 Vercel 的 60 秒超时
     console.log('[image] 提交异步任务:', JSON.stringify(requestBody).substring(0, 500));
     const submitted = await submitAsyncImageTask(requestBody, apiKey);
