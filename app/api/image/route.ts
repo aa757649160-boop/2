@@ -85,8 +85,12 @@ export async function POST(request: Request) {
       n: effectiveN,
     };
 
-    if (apiModel.startsWith('nano-banana')) {
-      apiModel = 'gemini-3.1-flash-image-preview';
+    // nano-banana 系列：统一映射到 Gemini 图像模型；gemini-nano-banana 系列：直接使用上游同名模型
+    // 两者都通过 image_size / aspect_ratio 传参
+    if (apiModel.startsWith('nano-banana') || apiModel.startsWith('gemini-nano-banana')) {
+      if (apiModel.startsWith('nano-banana')) {
+        apiModel = 'gemini-3.1-flash-image-preview';
+      }
       requestBody.model = apiModel;
       const imageSize = parts[parts.length - 1].toUpperCase();
       requestBody.image_size = imageSize;

@@ -341,7 +341,7 @@ return (
 <div className="space-y-4">
 <div><label className="block text-xs font-medium text-gray-500 mb-2">模型厂商</label>
 <select value={provider} onChange={e=>setProvider(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent">
-{Object.keys(IMAGE_MODELS).map(p=>(<option key={p} value={p}>{p==='gpt-image-2-stable'?'gpt-image-2（稳定接口）':p==='nano-banana-2-stable'?'nano-banana-2（稳定接口）':p}</option>))}
+{Object.keys(IMAGE_MODELS).map(p=>(<option key={p} value={p}>{p==='gpt-image-2-stable'?'gpt-image-2（稳定接口）':p==='nano-banana-2-stable'?'nano-banana-2（稳定接口）':p==='gpt-image-2.6-sunburst-stable'?'gpt-image-2.6-sunburst（稳定接口）':p==='gemini-nano-banana-2.1-stable'?'gemini-nano-banana-2.1（稳定接口）':p}</option>))}
 </select></div>
 <div><label className="block text-xs font-medium text-gray-500 mb-2">模型</label>
 <select value={model} onChange={e=>setModel(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent">

@@ -30,6 +30,10 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
 'gpt-image-2.5-sunburst-1k': { input: 0.17, output: 0 },
 'gpt-image-2.5-sunburst-2k': { input: 0.2, output: 0 },
 'gpt-image-2.5-sunburst-4k': { input: 0.25, output: 0 },
+// gpt-image-2.6-sunburst 定价
+'gpt-image-2.6-sunburst-1k': { input: 0.12, output: 0 },
+'gpt-image-2.6-sunburst-2k': { input: 0.14, output: 0 },
+'gpt-image-2.6-sunburst-4k': { input: 0.2, output: 0 },
 // gpt-image-2 稳定接口定价：提示0.03/K tokens，补全0.15/K tokens
 'gpt-image-2-stable-1k': { input: 0.36, output: 0 },
 'gpt-image-2-stable-2k': { input: 0.4, output: 0 },
@@ -38,6 +42,10 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
 'gpt-image-2.5-sunburst-stable-1k': { input: 0.4, output: 0 },
 'gpt-image-2.5-sunburst-stable-2k': { input: 0.45, output: 0 },
 'gpt-image-2.5-sunburst-stable-4k': { input: 0.54, output: 0 },
+// gpt-image-2.6-sunburst 稳定接口定价（稳定线路）
+'gpt-image-2.6-sunburst-stable-1k': { input: 0.4, output: 0 },
+'gpt-image-2.6-sunburst-stable-2k': { input: 0.45, output: 0 },
+'gpt-image-2.6-sunburst-stable-4k': { input: 0.5, output: 0 },
 'nano-banana-2-1k': { input: 0.24, output: 0 },
 'nano-banana-2-2k': { input: 0.3, output: 0 },
 'nano-banana-2-4k': { input: 0.35, output: 0 },
@@ -45,6 +53,10 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
 'nano-banana-2-stable-1k': { input: 0.3, output: 0 },
 'nano-banana-2-stable-2k': { input: 0.35, output: 0 },
 'nano-banana-2-stable-4k': { input: 0.4, output: 0 },
+// gemini-nano-banana-2.1 稳定接口定价
+'gemini-nano-banana-2.1-stable-1k': { input: 0.24, output: 0 },
+'gemini-nano-banana-2.1-stable-2k': { input: 0.26, output: 0 },
+'gemini-nano-banana-2.1-stable-4k': { input: 0.32, output: 0 },
 // 视频生成模型
 'veo3.1': { input: 1.8, output: 0 }, // Google veo3.1模型
 'doubao-seedance-2-0-260128': { input: 7.5, output: 0 }, // 1.5积分/秒 * 默认5秒
@@ -65,6 +77,9 @@ models: ['1k', '2k', '4k'],
 'gpt-image-2.5-sunburst': {
 models: ['1k', '2k', '4k'],
 },
+'gpt-image-2.6-sunburst': {
+models: ['1k', '2k', '4k'],
+},
 'gpt-image-2-stable': {
 models: ['1k', '2k', '4k'],
 note: '稳定接口：提示稳定分组消耗巨大可用正常分组出图后用稳定分组放大,每多一张参考图积分多0.01',
@@ -73,11 +88,19 @@ note: '稳定接口：提示稳定分组消耗巨大可用正常分组出图后�
 models: ['1k', '2k', '4k'],
 note: '稳定接口：提示稳定分组消耗巨大可用正常分组出图后用稳定分组放大,每多一张参考图积分多0.01',
 },
+'gpt-image-2.6-sunburst-stable': {
+models: ['1k', '2k', '4k'],
+note: '稳定接口：提示稳定分组消耗巨大可用正常分组出图后用稳定分组放大,每多一张参考图积分多0.01',
+},
 'nano-banana-2': {
 models: ['1k', '2k', '4k'],
 note: 'nano-banana2',
 },
 'nano-banana-2-stable': {
+models: ['1k', '2k', '4k'],
+note: '稳定接口：使用稳定优质接口全力维护',
+},
+'gemini-nano-banana-2.1-stable': {
 models: ['1k', '2k', '4k'],
 note: '稳定接口：使用稳定优质接口全力维护',
 },
