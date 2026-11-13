@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import bcrypt from 'bcryptjs';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -71,9 +70,7 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      // 加密密码
-      const hashedPassword = await bcrypt.hash(password, 10);
-
+      // 密码走 HTTPS 明文提交，由服务端做 bcrypt 哈希（前端不再自己加密）
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
@@ -82,7 +79,7 @@ export default function RegisterPage() {
         body: JSON.stringify({
           email,
           code,
-          password: hashedPassword,
+          password,
         }),
       });
 

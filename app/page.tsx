@@ -945,7 +945,7 @@ export default function HomePage() {
         body: JSON.stringify({
           userId: profileUserId,
           amount: tier.amount,
-          points: tier.points,
+          // points 由服务端按档位表计算，前端不再上报
           screenshot,
         }),
       });

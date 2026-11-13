@@ -206,9 +206,12 @@ export async function refundAsyncTask(taskId: string, reason?: string): Promise<
 export async function registerUser(username: string, password: string) {
   const userId = 'user_' + Math.random().toString(36).slice(2);
 
+  // 密码在服务端哈希后才落库：前端只传明文（HTTPS），不再传 bcrypt 哈希
+  const passwordHash = await require('bcryptjs').hash(password, 10);
+
   await sql`
     INSERT INTO users (user_id, username, password)
-    VALUES (${userId}, ${username}, ${password})
+    VALUES (${userId}, ${username}, ${passwordHash})
   `;
 
   return userId;

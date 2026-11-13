@@ -75,7 +75,7 @@ export default function ProfilePage() {
         body: JSON.stringify({
           userId,
           amount: tier.amount,
-          points: tier.points,
+          // points 由服务端按档位表计算，前端不再上报
           screenshot,
         }),
       });

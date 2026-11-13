@@ -128,6 +128,15 @@ apiKey: process.env.STABLE_API_KEY || '',
 };
 // 兼容旧页面的导出别名
 export const RECHARGE_TIERS = RECHARGE_OPTIONS;
+
+/**
+ * 按充值金额查服务端档位对应的积分（服务端唯一可信来源）
+ * 不在档位表中返回 null，调用方应拒绝该请求
+ */
+export function pointsForAmount(amount: number): number | null {
+  const tier = RECHARGE_OPTIONS.find((o) => Number(o.amount) === Number(amount));
+  return tier ? tier.points : null;
+}
 export const IMAGE_RESOLUTIONS: Record<string, string[]> = {
   '1k': [
     '1024x1024', // 1:1
