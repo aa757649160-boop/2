@@ -220,8 +220,9 @@ export async function POST(req: NextRequest) {
       apiKey: 'server-side-proxy',
     });
   } catch (error: any) {
-    // 手动构造JSON响应，确保无论如何都返回正确的JSON格式，避免前端解析失败
-    const errorObj = { error: error instanceof Error ? error.message : String(error) };
+    // 内部异常细节只写服务端日志，不回传浏览器
+    console.error('[video] fatal error:', error?.message, error?.stack);
+    const errorObj = { error: '视频任务提交失败，请稍后重试' };
     return new Response(JSON.stringify(errorObj), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }

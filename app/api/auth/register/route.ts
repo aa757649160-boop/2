@@ -4,7 +4,10 @@ import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from '@/lib/
 
 export async function POST(request: Request) {
   try {
-    const { email, code, password } = await request.json();
+    const body = await request.json();
+    const email = typeof body?.email === 'string' ? body.email.trim() : '';
+    const code = typeof body?.code === 'string' ? body.code.trim() : '';
+    const password = body?.password;
 
     if (!email || !code || !password) {
       return NextResponse.json({ error: '请填写完整信息' }, { status: 400 });

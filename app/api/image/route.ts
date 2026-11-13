@@ -113,8 +113,8 @@ export async function POST(request: Request) {
     try {
       userPoints = await getUserPoints(userId);
     } catch (e: any) {
-      console.error('[image] getUserPoints error:', e.message);
-      return NextResponse.json({ error: '查询积分失败: ' + e.message });
+      console.error('[image] getUserPoints error:', e?.message, e?.stack);
+      return NextResponse.json({ error: '查询积分失败，请稍后重试' });
     }
 
     const basePrice = MODEL_PRICING[model]?.input || 0;
@@ -236,7 +236,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ imageUrls });
   } catch (error: any) {
-    console.error('[image] fatal error:', error.message, error.stack);
-    return NextResponse.json({ error: error.message || '服务器内部错误' }, { status: 200 });
+    // 内部异常细节只写服务端日志，不回传浏览器
+    console.error('[image] fatal error:', error?.message, error?.stack);
+    return NextResponse.json({ error: '绘图失败，请稍后重试' }, { status: 200 });
   }
 }

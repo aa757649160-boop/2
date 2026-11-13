@@ -63,6 +63,22 @@ async function initTables() {
     )
   `;
 
+  // 新增：验证码错误尝试次数（老库自动补列，5 次即作废）
+  await sql`
+    ALTER TABLE verification_codes
+    ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0
+  `;
+
+  // 新增：验证码发送记录（按邮箱/IP 限频）
+  await sql`
+    CREATE TABLE IF NOT EXISTS code_requests (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      ip TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+
   // 新增积分扣费历史表
   await sql`
     CREATE TABLE IF NOT EXISTS point_deductions (
@@ -234,35 +250,103 @@ export async function loginUser(username: string, password: string) {
   return user[0].user_id;
 }
 
-// 保存验证码
+// 保存验证码（同一邮箱只保留最新一条，旧码立即失效）
 export async function saveVerificationCode(email: string, code: string) {
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5分钟过期（300000ms）
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5分钟过期
+
   await sql`
-    INSERT INTO verification_codes (email, code, expires_at)
-    VALUES (${email}, ${code}, ${expiresAt})
+    UPDATE verification_codes
+    SET used = true
+    WHERE email = ${email} AND used = false
+  `;
+
+  await sql`
+    INSERT INTO verification_codes (email, code, expires_at, attempts)
+    VALUES (${email}, ${code}, ${expiresAt}, 0)
   `;
 }
 
-// 验证验证码
+// 验证验证码：同一邮箱只认最新一条，累计错 5 次即作废
 export async function verifyCode(email: string, code: string) {
   const result = await sql`
-    SELECT * FROM verification_codes
-    WHERE email = ${email} AND code = ${code} AND expires_at > NOW() AND used = false
+    SELECT id, code, attempts FROM verification_codes
+    WHERE email = ${email} AND expires_at > NOW() AND used = false
+    ORDER BY id DESC
+    LIMIT 1
   `;
 
   if (result.length === 0) {
     return false;
   }
 
-  // 标记为已使用
+  const row = result[0];
+  const attempts = Number(row.attempts) || 0;
+
+  // 已经错满 5 次，作废
+  if (attempts >= 5) {
+    await sql`
+      UPDATE verification_codes SET used = true WHERE id = ${row.id}
+    `;
+    return false;
+  }
+
+  if (String(row.code).trim() !== String(code).trim()) {
+    const next = attempts + 1;
+    await sql`
+      UPDATE verification_codes
+      SET attempts = ${next}, used = ${next >= 5}
+      WHERE id = ${row.id}
+    `;
+    return false;
+  }
+
+  // 正确即消费掉
   await sql`
     UPDATE verification_codes
     SET used = true
-    WHERE id = ${result[0].id}
+    WHERE id = ${row.id}
   `;
 
   return true;
 }
+
+// 记录一次验证码发送（用于限频）
+export async function recordCodeRequest(email: string, ip: string | null) {
+  await sql`
+    INSERT INTO code_requests (email, ip)
+    VALUES (${email}, ${ip})
+  `;
+}
+
+// 统计指定时间窗内该邮箱的发送次数
+export async function countRecentCodeRequestsByEmail(email: string, minutes: number) {
+  const rows = await sql`
+    SELECT COUNT(*)::int AS c FROM code_requests
+    WHERE email = ${email} AND created_at > NOW() - make_interval(mins => ${minutes})
+  `;
+  return Number(rows[0]?.c) || 0;
+}
+
+// 统计指定时间窗内该 IP 的发送次数
+export async function countRecentCodeRequestsByIp(ip: string, minutes: number) {
+  const rows = await sql`
+    SELECT COUNT(*)::int AS c FROM code_requests
+    WHERE ip = ${ip} AND created_at > NOW() - make_interval(mins => ${minutes})
+  `;
+  return Number(rows[0]?.c) || 0;
+}
+
+// 距离该邮箱下一次可发送还剩多少秒（用于提示）
+export async function secondsUntilEmailCanRequest(email: string) {
+  const rows = await sql`
+    SELECT EXTRACT(EPOCH FROM (MAX(created_at) + INTERVAL '60 seconds' - NOW()))::int AS remain
+    FROM code_requests
+    WHERE email = ${email} AND created_at > NOW() - INTERVAL '60 seconds'
+  `;
+  const remain = Number(rows[0]?.remain) || 0;
+  return remain > 0 ? remain : 0;
+}
+
 
 // 创建充值请求 - 修复：接收screenshot属性，匹配原来的接口调用
 export async function createRechargeRequest({

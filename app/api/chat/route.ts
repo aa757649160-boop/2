@@ -65,7 +65,8 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('Chat API error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // 内部异常细节只写服务端日志，不回传浏览器
+    console.error('Chat API error:', error?.message, error?.stack);
+    return NextResponse.json({ error: '对话请求失败，请稍后重试' }, { status: 500 });
   }
 }
